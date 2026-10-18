@@ -1,0 +1,12 @@
+# Requirements untuk backend Smart Lab Scheduling System
+# TASK 08: SQLite Foundation — hanya stdlib Python yang dibutuhkan untuk task ini
+# (sqlite3 adalah bagian dari stdlib Python 3.x)
+
+# Test runner
+pytest>=7.0
+
+# Dependensi Flask (untuk task berikutnya — TASK 09 dst.)
+# Flask>=3.0
+# Flask-CORS>=4.0
+
+# Dependensi lain yang akan ditambahkan sesuai kebutuhan task berikutnya
