@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Smart Lab Scheduling System — SQLite Schema
 -- Berdasarkan DATA-MODEL.md versi 2.0-draft-finalisasi-dokumentasi
--- Keputusan: DEC-001 s/d DEC-059
+-- Keputusan: DEC-001 s/d DEC-060
 -- Tanggal: 18 Oktober 2026
 -- Catatan: Jalankan melalui init_db.py yang menangani PRAGMA dan idempoten.
 -- =============================================================================
@@ -17,53 +17,198 @@
 -- Fungsi: katalog jenis praktikum; bukan unit yang dijadwalkan (DEC-013).
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS mata_praktikum (
-    id        INTEGER PRIMARY KEY,
-    nama      TEXT    COLLATE NOCASE NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
+    id         INTEGER PRIMARY KEY,
+    nama       TEXT    COLLATE NOCASE NOT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     CONSTRAINT chk_mata_nama_notempty  CHECK (trim(nama) <> ''),
     CONSTRAINT chk_mata_is_active      CHECK (is_active IN (0, 1)),
-    CONSTRAINT uq_mata_nama            UNIQUE (nama)
+    CONSTRAINT uq_mata_nama            UNIQUE (nama),
+    CONSTRAINT chk_mata_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_mata_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_mata_praktikum_aktif
     ON mata_praktikum (is_active)
     WHERE is_active = 1;
 
+CREATE TRIGGER IF NOT EXISTS trg_mata_created_at_immutable
+BEFORE UPDATE OF created_at ON mata_praktikum
+BEGIN
+    SELECT RAISE(ABORT, 'MATA_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
+
 -- =============================================================================
 -- TABEL 2: kelompok
 -- Fungsi: master kelompok peserta.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS kelompok (
-    id              INTEGER PRIMARY KEY,
-    nama            TEXT    COLLATE NOCASE NOT NULL,
-    jumlah_peserta  INTEGER NOT NULL,
-    is_active       INTEGER NOT NULL DEFAULT 1,
+    id             INTEGER PRIMARY KEY,
+    nama           TEXT    COLLATE NOCASE NOT NULL,
+    jumlah_peserta INTEGER NOT NULL,
+    is_active      INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     CONSTRAINT chk_kelompok_nama_notempty   CHECK (trim(nama) <> ''),
     CONSTRAINT chk_kelompok_peserta_pos     CHECK (jumlah_peserta > 0),
     CONSTRAINT chk_kelompok_is_active       CHECK (is_active IN (0, 1)),
-    CONSTRAINT uq_kelompok_nama             UNIQUE (nama)
+    CONSTRAINT uq_kelompok_nama             UNIQUE (nama),
+    CONSTRAINT chk_kelompok_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_kelompok_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_kelompok_aktif
     ON kelompok (is_active)
     WHERE is_active = 1;
 
+CREATE TRIGGER IF NOT EXISTS trg_kelompok_created_at_immutable
+BEFORE UPDATE OF created_at ON kelompok
+BEGIN
+    SELECT RAISE(ABORT, 'KELOMPOK_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
+
 -- =============================================================================
 -- TABEL 3: asisten
 -- Fungsi: master asisten; nama TIDAK wajib unik (DEC-025).
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS asisten (
-    id        INTEGER PRIMARY KEY,
-    nama      TEXT    NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
+    id         INTEGER PRIMARY KEY,
+    nama       TEXT    NOT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     CONSTRAINT chk_asisten_nama_notempty CHECK (trim(nama) <> ''),
-    CONSTRAINT chk_asisten_is_active     CHECK (is_active IN (0, 1))
+    CONSTRAINT chk_asisten_is_active     CHECK (is_active IN (0, 1)),
+    CONSTRAINT chk_asisten_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_asisten_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
--- Index untuk pencarian nama (bukan unique, sesuai DEC-025)
 CREATE INDEX IF NOT EXISTS idx_asisten_nama
     ON asisten (nama);
 
@@ -71,25 +216,83 @@ CREATE INDEX IF NOT EXISTS idx_asisten_aktif
     ON asisten (is_active)
     WHERE is_active = 1;
 
+CREATE TRIGGER IF NOT EXISTS trg_asisten_created_at_immutable
+BEFORE UPDATE OF created_at ON asisten
+BEGIN
+    SELECT RAISE(ABORT, 'ASISTEN_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
+
 -- =============================================================================
 -- TABEL 4: laboratorium
 -- Fungsi: master ruang laboratorium dan kapasitas.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS laboratorium (
-    id        INTEGER PRIMARY KEY,
-    nama      TEXT    COLLATE NOCASE NOT NULL,
-    kapasitas INTEGER NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
+    id         INTEGER PRIMARY KEY,
+    nama       TEXT    COLLATE NOCASE NOT NULL,
+    kapasitas  INTEGER NOT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     CONSTRAINT chk_lab_nama_notempty CHECK (trim(nama) <> ''),
     CONSTRAINT chk_lab_kapasitas_pos  CHECK (kapasitas > 0),
     CONSTRAINT chk_lab_is_active      CHECK (is_active IN (0, 1)),
-    CONSTRAINT uq_lab_nama            UNIQUE (nama)
+    CONSTRAINT uq_lab_nama            UNIQUE (nama),
+    CONSTRAINT chk_lab_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_lab_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_laboratorium_aktif
     ON laboratorium (is_active)
     WHERE is_active = 1;
+
+CREATE TRIGGER IF NOT EXISTS trg_lab_created_at_immutable
+BEFORE UPDATE OF created_at ON laboratorium
+BEGIN
+    SELECT RAISE(ABORT, 'LAB_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
 
 -- =============================================================================
 -- TABEL 5: slot_waktu
@@ -102,6 +305,8 @@ CREATE TABLE IF NOT EXISTS slot_waktu (
     jam_mulai   TEXT    NOT NULL,
     jam_selesai TEXT    NOT NULL,
     is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     -- Hari Senin=1 s/d Jumat=5
     CONSTRAINT chk_slot_hari          CHECK (hari BETWEEN 1 AND 5),
@@ -127,13 +332,62 @@ CREATE TABLE IF NOT EXISTS slot_waktu (
         = 120
     ),
     CONSTRAINT chk_slot_is_active     CHECK (is_active IN (0, 1)),
-    CONSTRAINT uq_slot_hari_waktu     UNIQUE (hari, jam_mulai, jam_selesai)
+    CONSTRAINT uq_slot_hari_waktu     UNIQUE (hari, jam_mulai, jam_selesai),
+    CONSTRAINT chk_slot_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_slot_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
 -- Index untuk query kandidat solver per hari (aktif saja)
 CREATE INDEX IF NOT EXISTS idx_slot_waktu_hari_aktif
     ON slot_waktu (hari, jam_mulai, jam_selesai)
     WHERE is_active = 1;
+
+CREATE TRIGGER IF NOT EXISTS trg_slot_created_at_immutable
+BEFORE UPDATE OF created_at ON slot_waktu
+BEGIN
+    SELECT RAISE(ABORT, 'SLOT_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
 
 -- =============================================================================
 -- TRIGGER: cegah overlap slot aktif pada hari yang sama (DEC-023)
@@ -183,6 +437,8 @@ CREATE TABLE IF NOT EXISTS praktikum (
     kelompok_id       INTEGER NOT NULL,
     asisten_id        INTEGER NOT NULL,
     is_active         INTEGER NOT NULL DEFAULT 1,
+    created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     CONSTRAINT chk_praktikum_is_active CHECK (is_active IN (0, 1)),
 
@@ -196,7 +452,50 @@ CREATE TABLE IF NOT EXISTS praktikum (
 
     CONSTRAINT fk_praktikum_asisten
         FOREIGN KEY (asisten_id) REFERENCES asisten (id)
-        ON UPDATE RESTRICT ON DELETE RESTRICT
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+
+    CONSTRAINT chk_praktikum_created_fmt CHECK (
+        length(created_at) = 24
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
+    ),
+    CONSTRAINT chk_praktikum_updated_fmt CHECK (
+        length(updated_at) = 24
+                AND substr(updated_at, 5, 1) = '-'
+                AND substr(updated_at, 8, 1) = '-'
+                AND substr(updated_at, 11, 1) = 'T'
+                AND substr(updated_at, 14, 1) = ':'
+                AND substr(updated_at, 17, 1) = ':'
+                AND substr(updated_at, 20, 1) = '.'
+                AND substr(updated_at, 24, 1) = 'Z'
+                AND substr(updated_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(updated_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(updated_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(updated_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(updated_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(updated_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(updated_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(updated_at, 1, 19)) = substr(updated_at, 1, 19)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_praktikum_mata
@@ -211,6 +510,13 @@ CREATE INDEX IF NOT EXISTS idx_praktikum_asisten
 CREATE INDEX IF NOT EXISTS idx_praktikum_aktif
     ON praktikum (id)
     WHERE is_active = 1;
+
+CREATE TRIGGER IF NOT EXISTS trg_praktikum_created_at_immutable
+BEFORE UPDATE OF created_at ON praktikum
+BEGIN
+    SELECT RAISE(ABORT, 'PRAKTIKUM_IMMUTABLE: created_at tidak dapat diubah')
+    WHERE NEW.created_at <> OLD.created_at;
+END;
 
 -- =============================================================================
 -- TABEL 7: ketersediaan_kelompok
@@ -281,23 +587,71 @@ CREATE TABLE IF NOT EXISTS versi_jadwal (
     -- Format: YYYY-MM-DDTHH:MM:SS.sssZ (panjang 24)
     CONSTRAINT chk_vj_created_at_fmt CHECK (
         length(created_at) = 24
-        AND substr(created_at, 11, 1) = 'T'
-        AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
     ),
     CONSTRAINT chk_vj_invalidated_at_fmt CHECK (
         invalidated_at IS NULL
         OR (
             length(invalidated_at) = 24
+            AND substr(invalidated_at, 5, 1) = '-'
+            AND substr(invalidated_at, 8, 1) = '-'
             AND substr(invalidated_at, 11, 1) = 'T'
+            AND substr(invalidated_at, 14, 1) = ':'
+            AND substr(invalidated_at, 17, 1) = ':'
+            AND substr(invalidated_at, 20, 1) = '.'
             AND substr(invalidated_at, 24, 1) = 'Z'
+            AND substr(invalidated_at, 1, 4) BETWEEN '0001' AND '9999'
+            AND substr(invalidated_at, 6, 2) BETWEEN '01' AND '12'
+            AND substr(invalidated_at, 9, 2) BETWEEN '01' AND '31'
+            AND substr(invalidated_at, 12, 2) BETWEEN '00' AND '23'
+            AND substr(invalidated_at, 15, 2) BETWEEN '00' AND '59'
+            AND substr(invalidated_at, 18, 2) BETWEEN '00' AND '59'
+            AND substr(invalidated_at, 21, 1) BETWEEN '0' AND '9'
+            AND substr(invalidated_at, 22, 1) BETWEEN '0' AND '9'
+            AND substr(invalidated_at, 23, 1) BETWEEN '0' AND '9'
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(invalidated_at, 1, 19)) IS NOT NULL
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(invalidated_at, 1, 19)) = substr(invalidated_at, 1, 19)
         )
     ),
     CONSTRAINT chk_vj_archived_at_fmt CHECK (
         archived_at IS NULL
         OR (
             length(archived_at) = 24
+            AND substr(archived_at, 5, 1) = '-'
+            AND substr(archived_at, 8, 1) = '-'
             AND substr(archived_at, 11, 1) = 'T'
+            AND substr(archived_at, 14, 1) = ':'
+            AND substr(archived_at, 17, 1) = ':'
+            AND substr(archived_at, 20, 1) = '.'
             AND substr(archived_at, 24, 1) = 'Z'
+            AND substr(archived_at, 1, 4) BETWEEN '0001' AND '9999'
+            AND substr(archived_at, 6, 2) BETWEEN '01' AND '12'
+            AND substr(archived_at, 9, 2) BETWEEN '01' AND '31'
+            AND substr(archived_at, 12, 2) BETWEEN '00' AND '23'
+            AND substr(archived_at, 15, 2) BETWEEN '00' AND '59'
+            AND substr(archived_at, 18, 2) BETWEEN '00' AND '59'
+            AND substr(archived_at, 21, 1) BETWEEN '0' AND '9'
+            AND substr(archived_at, 22, 1) BETWEEN '0' AND '9'
+            AND substr(archived_at, 23, 1) BETWEEN '0' AND '9'
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(archived_at, 1, 19)) IS NOT NULL
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(archived_at, 1, 19)) = substr(archived_at, 1, 19)
         )
     ),
 
@@ -415,28 +769,92 @@ CREATE TABLE IF NOT EXISTS preview_jadwal (
     -- Format timestamp wajib RFC 3339 UTC fixed-width
     CONSTRAINT chk_preview_created_fmt CHECK (
         length(created_at) = 24
-        AND substr(created_at, 11, 1) = 'T'
-        AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 5, 1) = '-'
+                AND substr(created_at, 8, 1) = '-'
+                AND substr(created_at, 11, 1) = 'T'
+                AND substr(created_at, 14, 1) = ':'
+                AND substr(created_at, 17, 1) = ':'
+                AND substr(created_at, 20, 1) = '.'
+                AND substr(created_at, 24, 1) = 'Z'
+                AND substr(created_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(created_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(created_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(created_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(created_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(created_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(created_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(created_at, 1, 19)) = substr(created_at, 1, 19)
     ),
     CONSTRAINT chk_preview_expires_fmt CHECK (
         length(expires_at) = 24
-        AND substr(expires_at, 11, 1) = 'T'
-        AND substr(expires_at, 24, 1) = 'Z'
+                AND substr(expires_at, 5, 1) = '-'
+                AND substr(expires_at, 8, 1) = '-'
+                AND substr(expires_at, 11, 1) = 'T'
+                AND substr(expires_at, 14, 1) = ':'
+                AND substr(expires_at, 17, 1) = ':'
+                AND substr(expires_at, 20, 1) = '.'
+                AND substr(expires_at, 24, 1) = 'Z'
+                AND substr(expires_at, 1, 4) BETWEEN '0001' AND '9999'
+                AND substr(expires_at, 6, 2) BETWEEN '01' AND '12'
+                AND substr(expires_at, 9, 2) BETWEEN '01' AND '31'
+                AND substr(expires_at, 12, 2) BETWEEN '00' AND '23'
+                AND substr(expires_at, 15, 2) BETWEEN '00' AND '59'
+                AND substr(expires_at, 18, 2) BETWEEN '00' AND '59'
+                AND substr(expires_at, 21, 1) BETWEEN '0' AND '9'
+                AND substr(expires_at, 22, 1) BETWEEN '0' AND '9'
+                AND substr(expires_at, 23, 1) BETWEEN '0' AND '9'
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(expires_at, 1, 19)) IS NOT NULL
+                AND strftime('%Y-%m-%dT%H:%M:%S', substr(expires_at, 1, 19)) = substr(expires_at, 1, 19)
     ),
     CONSTRAINT chk_preview_consumed_fmt CHECK (
         consumed_at IS NULL
         OR (
             length(consumed_at) = 24
+            AND substr(consumed_at, 5, 1) = '-'
+            AND substr(consumed_at, 8, 1) = '-'
             AND substr(consumed_at, 11, 1) = 'T'
+            AND substr(consumed_at, 14, 1) = ':'
+            AND substr(consumed_at, 17, 1) = ':'
+            AND substr(consumed_at, 20, 1) = '.'
             AND substr(consumed_at, 24, 1) = 'Z'
+            AND substr(consumed_at, 1, 4) BETWEEN '0001' AND '9999'
+            AND substr(consumed_at, 6, 2) BETWEEN '01' AND '12'
+            AND substr(consumed_at, 9, 2) BETWEEN '01' AND '31'
+            AND substr(consumed_at, 12, 2) BETWEEN '00' AND '23'
+            AND substr(consumed_at, 15, 2) BETWEEN '00' AND '59'
+            AND substr(consumed_at, 18, 2) BETWEEN '00' AND '59'
+            AND substr(consumed_at, 21, 1) BETWEEN '0' AND '9'
+            AND substr(consumed_at, 22, 1) BETWEEN '0' AND '9'
+            AND substr(consumed_at, 23, 1) BETWEEN '0' AND '9'
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(consumed_at, 1, 19)) IS NOT NULL
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(consumed_at, 1, 19)) = substr(consumed_at, 1, 19)
         )
     ),
     CONSTRAINT chk_preview_terminal_fmt CHECK (
         terminal_at IS NULL
         OR (
             length(terminal_at) = 24
+            AND substr(terminal_at, 5, 1) = '-'
+            AND substr(terminal_at, 8, 1) = '-'
             AND substr(terminal_at, 11, 1) = 'T'
+            AND substr(terminal_at, 14, 1) = ':'
+            AND substr(terminal_at, 17, 1) = ':'
+            AND substr(terminal_at, 20, 1) = '.'
             AND substr(terminal_at, 24, 1) = 'Z'
+            AND substr(terminal_at, 1, 4) BETWEEN '0001' AND '9999'
+            AND substr(terminal_at, 6, 2) BETWEEN '01' AND '12'
+            AND substr(terminal_at, 9, 2) BETWEEN '01' AND '31'
+            AND substr(terminal_at, 12, 2) BETWEEN '00' AND '23'
+            AND substr(terminal_at, 15, 2) BETWEEN '00' AND '59'
+            AND substr(terminal_at, 18, 2) BETWEEN '00' AND '59'
+            AND substr(terminal_at, 21, 1) BETWEEN '0' AND '9'
+            AND substr(terminal_at, 22, 1) BETWEEN '0' AND '9'
+            AND substr(terminal_at, 23, 1) BETWEEN '0' AND '9'
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(terminal_at, 1, 19)) IS NOT NULL
+            AND strftime('%Y-%m-%dT%H:%M:%S', substr(terminal_at, 1, 19)) = substr(terminal_at, 1, 19)
         )
     ),
 

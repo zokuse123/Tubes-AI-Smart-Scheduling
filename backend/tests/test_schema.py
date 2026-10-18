@@ -25,7 +25,7 @@ import unittest
 # Tambahkan root proyek ke path agar import relatif berfungsi
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from backend.db.init_db import get_connection
+from backend.db.init_db import get_connection, migrate_master_tables_if_needed
 
 _SCHEMA_PATH = os.path.join(
     os.path.dirname(__file__), "..", "db", "schema.sql"
@@ -130,13 +130,19 @@ class TestInitialization(unittest.TestCase):
         self.assertEqual(1, cur.fetchone()[0])
 
     def test_triggers_exist(self):
-        """Semua 5 trigger wajib ada."""
+        """Semua 11 trigger wajib ada (5 trigger operasional/riwayat + 6 trigger immutabilitas created_at)."""
         expected_triggers = {
             "trg_slot_no_overlap_insert",
             "trg_slot_no_overlap_update",
             "trg_versi_jadwal_immutable",
             "trg_detail_jadwal_immutable",
             "trg_preview_immutable",
+            "trg_mata_created_at_immutable",
+            "trg_kelompok_created_at_immutable",
+            "trg_asisten_created_at_immutable",
+            "trg_lab_created_at_immutable",
+            "trg_slot_created_at_immutable",
+            "trg_praktikum_created_at_immutable",
         }
         cur = self.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -144,6 +150,7 @@ class TestInitialization(unittest.TestCase):
         actual = {row[0] for row in cur.fetchall()}
         missing = expected_triggers - actual
         self.assertFalse(missing, f"Trigger tidak ditemukan: {missing}")
+        self.assertEqual(11, len(actual), f"Total trigger tidak 11: {len(actual)}")
 
     def test_27_indexes_exist(self):
         """Semua 18 index eksplisit dan total 27 index (termasuk auto-indexes) wajib ada."""
@@ -1434,6 +1441,423 @@ class TestTransactionRollback(unittest.TestCase):
         # Tidak ada baris versi_jadwal setelah rollback
         cur = self.conn.execute("SELECT count(*) FROM versi_jadwal")
         self.assertEqual(0, cur.fetchone()[0])
+
+
+# =============================================================================
+# 15. DEC-060: Timestamp Master, Immutabilitas, dan Migrasi Idempoten
+# =============================================================================
+
+class TestMasterTimestamps(unittest.TestCase):
+    def setUp(self):
+        self.conn = make_db()
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_master_tables_default_timestamps(self):
+        """Insert tanpa menyertakan created_at/updated_at harus otomatis terisi RFC 3339 UTC 24 karakter."""
+        self.conn.execute("INSERT INTO mata_praktikum (nama) VALUES ('AI')")
+        self.conn.execute("INSERT INTO kelompok (nama, jumlah_peserta) VALUES ('K1', 20)")
+        self.conn.execute("INSERT INTO asisten (nama) VALUES ('A1')")
+        self.conn.execute("INSERT INTO laboratorium (nama, kapasitas) VALUES ('L1', 30)")
+        self.conn.execute("INSERT INTO slot_waktu (hari, jam_mulai, jam_selesai) VALUES (1, '08:00', '10:00')")
+        self.conn.execute("INSERT INTO praktikum (mata_praktikum_id, kelompok_id, asisten_id) VALUES (1, 1, 1)")
+        self.conn.commit()
+
+        tables = ["mata_praktikum", "kelompok", "asisten", "laboratorium", "slot_waktu", "praktikum"]
+        for tbl in tables:
+            with self.subTest(table=tbl):
+                row = self.conn.execute(f"SELECT created_at, updated_at FROM {tbl} WHERE id=1").fetchone()
+                c_at, u_at = row["created_at"], row["updated_at"]
+                self.assertEqual(24, len(c_at), f"{tbl}.created_at length salah")
+                self.assertEqual(24, len(u_at), f"{tbl}.updated_at length salah")
+                self.assertEqual("T", c_at[10])
+                self.assertEqual("Z", c_at[23])
+                self.assertEqual("T", u_at[10])
+                self.assertEqual("Z", u_at[23])
+
+    def test_master_created_at_immutable(self):
+        """created_at pada seluruh 6 tabel master tidak boleh dapat diubah (DEC-060)."""
+        self.conn.execute("INSERT INTO mata_praktikum (id, nama) VALUES (1, 'AI')")
+        self.conn.execute("INSERT INTO kelompok (id, nama, jumlah_peserta) VALUES (1, 'K1', 20)")
+        self.conn.execute("INSERT INTO asisten (id, nama) VALUES (1, 'A1')")
+        self.conn.execute("INSERT INTO laboratorium (id, nama, kapasitas) VALUES (1, 'L1', 30)")
+        self.conn.execute("INSERT INTO slot_waktu (id, hari, jam_mulai, jam_selesai) VALUES (1, 1, '08:00', '10:00')")
+        self.conn.execute("INSERT INTO praktikum (id, mata_praktikum_id, kelompok_id, asisten_id) VALUES (1, 1, 1, 1)")
+        self.conn.commit()
+
+        cases = [
+            ("UPDATE mata_praktikum SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "MATA_IMMUTABLE"),
+            ("UPDATE kelompok SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "KELOMPOK_IMMUTABLE"),
+            ("UPDATE asisten SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "ASISTEN_IMMUTABLE"),
+            ("UPDATE laboratorium SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "LAB_IMMUTABLE"),
+            ("UPDATE slot_waktu SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "SLOT_IMMUTABLE"),
+            ("UPDATE praktikum SET created_at='2026-10-18T00:00:00.000Z' WHERE id=1", "PRAKTIKUM_IMMUTABLE"),
+        ]
+        for sql, expected_tag in cases:
+            with self.subTest(sql=sql):
+                with self.assertRaises((sqlite3.OperationalError, sqlite3.IntegrityError)) as ctx:
+                    self.conn.execute(sql)
+                self.assertIn(expected_tag, str(ctx.exception))
+
+    def test_master_timestamp_format_invalid_rejected(self):
+        """Format timestamp non-RFC-3339 atau panjang salah harus ditolak CHECK constraint."""
+        bad_timestamps = [
+            "2026-10-18 08:30:00",
+            "2026-10-18T08:30:00Z",
+            "2026-10-18T08:30:00.00Z",
+            "not-a-timestamp",
+            "2026-04-31T12:00:00.000Z",  # Tanggal fiktif: April hanya 30 hari
+            "2026-02-29T12:00:00.000Z",  # 2026 bukan tahun kabisat
+            "2026-00-01T12:00:00.000Z",  # Bulan 00
+            "2026-13-01T12:00:00.000Z",  # Bulan 13
+            "2026-05-00T12:00:00.000Z",  # Hari 00
+            "2026-05-32T12:00:00.000Z",  # Hari 32
+            "2026-05-01T24:00:00.000Z",  # Jam 24
+            "2026-05-01T23:60:00.000Z",  # Menit 60
+            "2026-05-01T23:00:60.000Z",  # Detik 60
+            "2026-05-01T23:00:00.123+07:00",  # Offset selain Z
+            "2026-05-01 23:00:00.000Z",  # Spasi bukan T
+            "2026-05-01T23:00:00,000Z",  # Koma bukan titik
+            "2026-05-01T23:00:00.ABCZ",  # Huruf pada milidetik
+            "2026-5-1T23:0:0.0Z",        # Format non-canonical
+            "ABCD-EF-GHTIJ:KL:MN.OPQZ",  # String huruf acak
+        ]
+        for bad_ts in bad_timestamps:
+            with self.subTest(bad_ts=bad_ts):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.conn.execute(
+                        "INSERT INTO mata_praktikum (nama, created_at, updated_at) VALUES (?, ?, ?)",
+                        (f"Mata_{bad_ts[:5]}", bad_ts, ts()),
+                    )
+                self.assertIn("chk_mata_created_fmt", str(ctx.exception))
+
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
+                    self.conn.execute(
+                        "INSERT INTO mata_praktikum (nama, created_at, updated_at) VALUES (?, ?, ?)",
+                        (f"Mata2_{bad_ts[:5]}", ts(), bad_ts),
+                    )
+                self.assertIn("chk_mata_updated_fmt", str(ctx.exception))
+
+    def test_migration_table_rebuild_from_old_schema(self):
+        """Database lama tanpa created_at/updated_at dimigrasi transaksional via table rebuild tanpa kehilangan data."""
+        # Buat database in-memory dengan tabel lama (tanpa created_at dan updated_at)
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        # Buat skema lama
+        old_conn.execute("""CREATE TABLE mata_praktikum (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE kelompok (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, jumlah_peserta INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE asisten (
+            id INTEGER PRIMARY KEY, nama TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE laboratorium (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, kapasitas INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE slot_waktu (
+            id INTEGER PRIMARY KEY, hari INTEGER NOT NULL, jam_mulai TEXT NOT NULL, jam_selesai TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (hari, jam_mulai, jam_selesai)
+        )""")
+        old_conn.execute("""CREATE TABLE praktikum (
+            id INTEGER PRIMARY KEY, mata_praktikum_id INTEGER NOT NULL REFERENCES mata_praktikum(id),
+            kelompok_id INTEGER NOT NULL REFERENCES kelompok(id), asisten_id INTEGER NOT NULL REFERENCES asisten(id),
+            is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE ketersediaan_kelompok (
+            kelompok_id INTEGER NOT NULL REFERENCES kelompok(id), slot_id INTEGER NOT NULL REFERENCES slot_waktu(id),
+            PRIMARY KEY (kelompok_id, slot_id)
+        )""")
+
+        # Isi data lama
+        old_conn.execute("INSERT INTO mata_praktikum (id, nama) VALUES (1, 'Old Mata')")
+        old_conn.execute("INSERT INTO kelompok (id, nama, jumlah_peserta) VALUES (1, 'Old Kelompok', 25)")
+        old_conn.execute("INSERT INTO asisten (id, nama) VALUES (1, 'Old Asisten')")
+        old_conn.execute("INSERT INTO laboratorium (id, nama, kapasitas) VALUES (1, 'Old Lab', 35)")
+        old_conn.execute("INSERT INTO slot_waktu (id, hari, jam_mulai, jam_selesai) VALUES (1, 1, '08:00', '10:00')")
+        old_conn.execute("INSERT INTO praktikum (id, mata_praktikum_id, kelompok_id, asisten_id) VALUES (1, 1, 1, 1)")
+        old_conn.execute("INSERT INTO ketersediaan_kelompok (kelompok_id, slot_id) VALUES (1, 1)")
+        old_conn.commit()
+
+        # Jalankan migrasi table rebuild
+        migrated = migrate_master_tables_if_needed(old_conn)
+        self.assertTrue(migrated, "Migrasi harus dijalankan untuk tabel lama")
+
+        # Verifikasi seluruh data lama tetap utuh
+        row_m = old_conn.execute("SELECT * FROM mata_praktikum WHERE id=1").fetchone()
+        self.assertEqual("Old Mata", row_m["nama"])
+        self.assertEqual(24, len(row_m["created_at"]))
+        self.assertEqual(24, len(row_m["updated_at"]))
+
+        row_k = old_conn.execute("SELECT * FROM kelompok WHERE id=1").fetchone()
+        self.assertEqual("Old Kelompok", row_k["nama"])
+        self.assertEqual(25, row_k["jumlah_peserta"])
+
+        row_p = old_conn.execute("SELECT * FROM praktikum WHERE id=1").fetchone()
+        self.assertEqual(1, row_p["mata_praktikum_id"])
+        self.assertEqual(1, row_p["kelompok_id"])
+        self.assertEqual(1, row_p["asisten_id"])
+
+        # Verifikasi integritas relasi foreign key
+        fk_check = old_conn.execute("PRAGMA foreign_key_check").fetchall()
+        self.assertEqual([], fk_check, f"Ada pelanggaran foreign key: {fk_check}")
+
+        # Verifikasi idempoten: jalankan ulang migrasi, harus mengembalikan False
+        migrated_again = migrate_master_tables_if_needed(old_conn)
+        self.assertFalse(migrated_again, "Migrasi kedua harus no-op (idempoten)")
+        old_conn.close()
+
+    def test_master_updated_at_can_be_updated(self):
+        """updated_at dapat diperbarui (berbeda dengan created_at yang immutable)."""
+        self.conn.execute("INSERT INTO mata_praktikum (id, nama) VALUES (1, 'AI')")
+        self.conn.commit()
+
+        new_updated_at = ts("999")
+        self.conn.execute("UPDATE mata_praktikum SET updated_at=? WHERE id=1", (new_updated_at,))
+        self.conn.commit()
+
+        row = self.conn.execute("SELECT updated_at FROM mata_praktikum WHERE id=1").fetchone()
+        self.assertEqual(new_updated_at, row[0])
+
+    def test_strict_calendar_leap_year_valid_accepted(self):
+        """Tanggal 29 Februari pada tahun kabisat (2024) harus diterima oleh CHECK constraint."""
+        leap_ts = "2024-02-29T12:00:00.000Z"
+        self.conn.execute(
+            "INSERT INTO mata_praktikum (nama, created_at, updated_at) VALUES ('Kabisat Valid', ?, ?)",
+            (leap_ts, leap_ts),
+        )
+        self.conn.commit()
+        row = self.conn.execute("SELECT created_at FROM mata_praktikum WHERE nama='Kabisat Valid'").fetchone()
+        self.assertEqual(leap_ts, row[0])
+
+    def test_migration_preserves_indexes_and_triggers(self):
+        """Migrasi table rebuild harus mempertahankan seluruh index dan trigger (termasuk trigger overlap)."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        old_conn.execute("""CREATE TABLE slot_waktu (
+            id INTEGER PRIMARY KEY, hari INTEGER NOT NULL, jam_mulai TEXT NOT NULL, jam_selesai TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (hari, jam_mulai, jam_selesai)
+        )""")
+        old_conn.execute("INSERT INTO slot_waktu (id, hari, jam_mulai, jam_selesai) VALUES (1, 1, '08:00', '10:00')")
+        old_conn.commit()
+
+        # Jalankan migrasi
+        migrate_master_tables_if_needed(old_conn)
+
+        # 1. Verifikasi index idx_slot_waktu_hari_aktif ada
+        cur = old_conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_slot_waktu_hari_aktif'")
+        self.assertIsNotNone(cur.fetchone(), "Index idx_slot_waktu_hari_aktif harus ada setelah migrasi")
+
+        # 2. Verifikasi trigger overlap aktif menolak INSERT slot overlap
+        with self.assertRaises((sqlite3.OperationalError, sqlite3.IntegrityError)) as ctx:
+            old_conn.execute(
+                "INSERT INTO slot_waktu (hari, jam_mulai, jam_selesai) VALUES (1, '09:00', '11:00')"
+            )
+        self.assertIn("SLOT_OVERLAP", str(ctx.exception))
+
+        # 3. Verifikasi trigger immutability menolak perubahan created_at
+        with self.assertRaises((sqlite3.OperationalError, sqlite3.IntegrityError)) as ctx:
+            old_conn.execute(
+                "UPDATE slot_waktu SET created_at='2026-01-01T00:00:00.000Z' WHERE id=1"
+            )
+        self.assertIn("SLOT_IMMUTABLE", str(ctx.exception))
+
+        # 4. Pastikan tidak ada tabel sementara _mig_* yang tertinggal
+        cur = old_conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '_mig_%'")
+        self.assertEqual([], cur.fetchall(), "Tidak boleh ada tabel _mig_* tertinggal")
+        old_conn.close()
+
+    def test_partial_migration_preserves_existing_created_at(self):
+        """Jika tabel lama sudah memiliki created_at valid, migrasi tidak boleh menimpa nilainya dengan migration_ts."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        # Tabel dengan created_at tetapi TANPA updated_at
+        old_conn.execute("""CREATE TABLE mata_praktikum (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )""")
+        historical_ts = "2025-05-10T08:00:00.000Z"
+        old_conn.execute("INSERT INTO mata_praktikum (id, nama, is_active, created_at) VALUES (1, 'Histori Mata', 1, ?)", (historical_ts,))
+        old_conn.commit()
+
+        # Jalankan migrasi
+        migrated = migrate_master_tables_if_needed(old_conn)
+        self.assertTrue(migrated, "Migrasi harus dijalankan untuk tabel parsial")
+
+        row = old_conn.execute("SELECT * FROM mata_praktikum WHERE id=1").fetchone()
+        self.assertEqual(historical_ts, row["created_at"], "created_at lama harus dipertahankan secara utuh")
+        self.assertNotEqual(historical_ts, row["updated_at"], "updated_at harus diisi migration_ts")
+        self.assertEqual(24, len(row["updated_at"]))
+        old_conn.close()
+
+    def test_partial_migration_preserves_existing_updated_at(self):
+        """Jika tabel lama sudah memiliki updated_at valid tetapi tidak ada created_at, migrasi mempertahankannya."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        old_conn.execute("""CREATE TABLE kelompok (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, jumlah_peserta INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        )""")
+        historical_updated = "2025-06-15T09:30:00.000Z"
+        old_conn.execute("INSERT INTO kelompok (id, nama, jumlah_peserta, is_active, updated_at) VALUES (1, 'K-Histori', 30, 1, ?)", (historical_updated,))
+        old_conn.commit()
+
+        migrated = migrate_master_tables_if_needed(old_conn)
+        self.assertTrue(migrated, "Migrasi harus dijalankan")
+
+        row = old_conn.execute("SELECT * FROM kelompok WHERE id=1").fetchone()
+        self.assertEqual(historical_updated, row["updated_at"], "updated_at lama harus dipertahankan")
+        self.assertEqual(24, len(row["created_at"]), "created_at harus diisi migration_ts")
+        old_conn.close()
+
+    def test_migration_preserves_source_revision_and_historical_snapshots(self):
+        """Migrasi tidak boleh mengubah nilai source_revision atau isi tabel snapshot versi/detail."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        # Setup skema lama dan metadata
+        old_conn.execute("CREATE TABLE system_metadata (key TEXT PRIMARY KEY, value INTEGER NOT NULL)")
+        old_conn.execute("INSERT INTO system_metadata VALUES ('source_revision', 42)")
+
+        old_conn.execute("""CREATE TABLE mata_praktikum (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("INSERT INTO mata_praktikum VALUES (1, 'Mata 1', 1)")
+
+        # Tabel snapshot historis
+        old_conn.execute("""CREATE TABLE versi_jadwal (
+            id INTEGER PRIMARY KEY, status TEXT, source_revision INTEGER, created_at TEXT, snapshot_json TEXT
+        )""")
+        snap_content = '{"schema_version": 1, "data": "histori"}'
+        old_conn.execute(
+            "INSERT INTO versi_jadwal VALUES (1, 'active', 42, '2025-01-01T00:00:00.000Z', ?)",
+            (snap_content,),
+        )
+        old_conn.commit()
+
+        # Jalankan migrasi
+        migrate_master_tables_if_needed(old_conn)
+
+        # Verifikasi source_revision tetap 42
+        rev = old_conn.execute("SELECT value FROM system_metadata WHERE key='source_revision'").fetchone()[0]
+        self.assertEqual(42, rev, "source_revision tidak boleh berubah setelah migrasi")
+
+        # Verifikasi snapshot historis tetap utuh
+        v_row = old_conn.execute("SELECT * FROM versi_jadwal WHERE id=1").fetchone()
+        self.assertEqual(42, v_row["source_revision"])
+        self.assertEqual(snap_content, v_row["snapshot_json"])
+        old_conn.close()
+
+    def test_migration_atomic_rollback_on_fk_violation(self):
+        """Jika terjadi pelanggaran foreign key setelah rebuild, transaksi harus rollback tanpa meninggalkan _mig_*."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        old_conn.execute("""CREATE TABLE mata_praktikum (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE kelompok (
+            id INTEGER PRIMARY KEY, nama TEXT COLLATE NOCASE NOT NULL UNIQUE, jumlah_peserta INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE asisten (
+            id INTEGER PRIMARY KEY, nama TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+        old_conn.execute("""CREATE TABLE praktikum (
+            id INTEGER PRIMARY KEY, mata_praktikum_id INTEGER NOT NULL REFERENCES mata_praktikum(id),
+            kelompok_id INTEGER NOT NULL REFERENCES kelompok(id), asisten_id INTEGER NOT NULL REFERENCES asisten(id),
+            is_active INTEGER NOT NULL DEFAULT 1
+        )""")
+
+        old_conn.execute("INSERT INTO mata_praktikum VALUES (1, 'Mata 1', 1)")
+        old_conn.execute("INSERT INTO kelompok VALUES (1, 'Kelompok 1', 20, 1)")
+        old_conn.execute("INSERT INTO asisten VALUES (1, 'Asisten 1', 1)")
+        old_conn.commit()
+        # Masukkan referensi rusak dengan mematikan FK sementara di luar transaksi
+        old_conn.execute("PRAGMA foreign_keys = OFF")
+        old_conn.execute("INSERT INTO praktikum VALUES (1, 999, 1, 1, 1)")
+        old_conn.commit()
+        old_conn.execute("PRAGMA foreign_keys = ON")
+
+        # Migrasi harus gagal saat foreign_key_check dan melakukan rollback
+        with self.assertRaises(RuntimeError) as ctx:
+            migrate_master_tables_if_needed(old_conn)
+        self.assertIn("Foreign key check gagal", str(ctx.exception))
+
+        # Verifikasi tidak ada tabel _mig_* tertinggal
+        cur = old_conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '_mig_%'")
+        self.assertEqual([], cur.fetchall())
+    def test_migration_atomic_rollback_on_post_ddl_failure(self):
+        """Jika pembuatan ulang index/trigger gagal setelah table swap, transaksi harus rollback dan memulihkan tabel lama."""
+        import backend.db.init_db as init_db_module
+
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.row_factory = sqlite3.Row
+
+        old_conn.execute("CREATE TABLE mata_praktikum (id INTEGER PRIMARY KEY, nama TEXT, is_active INTEGER NOT NULL DEFAULT 1)")
+        old_conn.execute("INSERT INTO mata_praktikum VALUES (1, 'Mata Asli', 1)")
+        old_conn.commit()
+
+        # Simulasikan kegagalan DDL index/trigger dengan memasukkan DDL sintaks rusak sementara
+        original_ddls = list(init_db_module.REBUILD_POST_DDLS["mata_praktikum"])
+        init_db_module.REBUILD_POST_DDLS["mata_praktikum"].append("CREATE TRIGGER trg_sengaja_rusak SINTAKS SALAH")
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                init_db_module.migrate_master_tables_if_needed(old_conn)
+        finally:
+            init_db_module.REBUILD_POST_DDLS["mata_praktikum"] = original_ddls
+
+        # Verifikasi rollback sukses: tabel lama dan baris aslinya tetap utuh, kolom created_at belum ada
+        cur = old_conn.execute("PRAGMA table_info(mata_praktikum)")
+        cols = {row[1] for row in cur.fetchall()}
+        self.assertNotIn("created_at", cols, "Kolom created_at tidak boleh ada karena transaksi di-rollback")
+
+        row = old_conn.execute("SELECT * FROM mata_praktikum WHERE id=1").fetchone()
+        self.assertEqual("Mata Asli", row["nama"], "Data lama harus tetap utuh sempurna setelah rollback")
+
+        # Verifikasi tidak ada tabel temporary _mig_* tertinggal
+        cur = old_conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '_mig_%'")
+        self.assertEqual([], cur.fetchall())
+        old_conn.close()
+
+    def test_migration_rollback_on_failure(self):
+        """Jika terjadi error saat rebuild table, transaksi harus rollback tanpa merusak database."""
+        old_conn = sqlite3.connect(":memory:")
+        old_conn.execute("PRAGMA foreign_keys = ON")
+        old_conn.execute("CREATE TABLE mata_praktikum (id INTEGER PRIMARY KEY, nama TEXT, is_active INTEGER NOT NULL DEFAULT 1)")
+        old_conn.execute("INSERT INTO mata_praktikum (id, nama, is_active) VALUES (1, 'Mata 1', 1)")
+        old_conn.commit()
+
+        # Buat tabel temporary yang akan bentrok untuk memaksa error
+        old_conn.execute("CREATE TABLE _mig_mata_praktikum (id INT)")
+
+        # Jalankan migrasi yang sengaja digagalkan dengan mock/bentrok
+        # Fungsi migrate_master_tables_if_needed melakukan DROP TABLE IF EXISTS _mig_...,
+        # jadi mari kita uji penolakan jika tabel memiliki data tidak valid untuk constraint baru
+        # misalnya kelompok dengan peserta 0 (melanggar CHECK jumlah_peserta > 0)
+        old_conn.execute("CREATE TABLE kelompok (id INTEGER PRIMARY KEY, nama TEXT, jumlah_peserta INTEGER, is_active INTEGER)")
+        old_conn.execute("INSERT INTO kelompok (id, nama, jumlah_peserta, is_active) VALUES (1, 'K_Bad', 0, 1)")
+        old_conn.commit()
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            migrate_master_tables_if_needed(old_conn)
+
+        # Database harus kembali ke state sebelum migrasi
+        cur = old_conn.execute("SELECT count(*) FROM kelompok WHERE id=1")
+        self.assertEqual(1, cur.fetchone()[0])
+        old_conn.close()
 
 
 # =============================================================================

@@ -25,9 +25,10 @@
 - [ ] Tes UI dan integrasi API.
 
 ## Zicco — Backend
-- [ ] Finalisasi ERD, constraint SQLite, foreign keys, migrasi awal.
-- [ ] Setup Flask dan tes API dasar.
-- [ ] CRUD, soft delete, ketersediaan, revisi data dan invalidasi atomik.
+- [x] Finalisasi ERD, constraint SQLite, foreign keys, fondasi database awal (TASK 08).
+- [ ] Implementasi DEC-060: timestamp `created_at`/`updated_at` pada 6 tabel master, migrasi idempoten table rebuild, dan regression test.
+- [ ] Setup Flask application factory dan konfigurasi SQLite.
+- [ ] CRUD, soft delete, ketersediaan, revisi data dan invalidasi atomik (TASK 10).
 - [ ] Jembatan proses Prolog JSON dengan timeout 30 detik.
 - [ ] Preview TTL 30 menit, save atomik, riwayat dan snapshot.
 - [ ] Tes error, race condition, dan transaksi.

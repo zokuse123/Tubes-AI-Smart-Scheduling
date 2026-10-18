@@ -17,6 +17,8 @@
 - Nama kelompok, laboratorium, dan mata praktikum unik secara case-insensitive. Nama asisten tidak wajib unik sesuai DEC-025.
 - Semua timestamp backend menggunakan RFC 3339 UTC fixed-width dengan milidetik, misalnya `2026-10-18T08:30:00.000Z`. Backend adalah sumber waktu.
 - Setiap kolom timestamp wajib memiliki validasi bentuk fixed-width di backend dan CHECK SQLite ekuivalen (`length(value)=24`, karakter pemisah pada posisi RFC 3339 yang tetap, digit/rentang komponen valid, dan akhiran `Z`). Perbandingan leksikografis aman karena semua nilai memakai bentuk UTC yang sama.
+- Sesuai DEC-060, enam entitas master (`mata_praktikum`, `kelompok`, `asisten`, `laboratorium`, `slot_waktu`, `praktikum`) memiliki kolom `created_at` dan `updated_at` fixed-width RFC 3339 UTC. `created_at` immutable setelah insert (dilindungi trigger); `updated_at` diperbarui atomik hanya pada mutasi efektif bersama kenaikan `source_revision`. Permintaan no-op tidak mengubah `updated_at` maupun `source_revision`.
+- Setiap kolom timestamp (`created_at`, `updated_at`, dan kolom waktu pada versi/preview) divalidasi oleh CHECK constraint SQLite yang ketat: panjang tepat 24 karakter, format canonical `YYYY-MM-DDTHH:MM:SS.sssZ`, validitas kalender Gregorian (menolak tanggal fiktif seperti 31 April atau 29 Februari non-kabisat), dan tanpa evaluasi NULL yang lolos secara tidak sengaja.
 - Hari memakai integer 1=Senin sampai 5=Jumat. Waktu slot memakai `HH:MM` 24 jam dan interval half-open `[mulai, selesai)`.
 - Setiap kolom jam wajib memiliki validasi bentuk `HH:MM` di backend dan CHECK SQLite ekuivalen: panjang 5, pemisah `:`, jam `00`–`23`, dan menit `00`–`59`.
 - Baris ketersediaan adalah allowlist: ada baris berarti tersedia; tidak ada baris berarti tidak tersedia.
@@ -51,9 +53,12 @@
 | `id` | INTEGER | Tidak | — | PRIMARY KEY |
 | `nama` | TEXT COLLATE NOCASE | Tidak | — | UNIQUE, CHECK `trim(nama) <> ''` |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**Index:** unique index case-insensitive pada `nama`; index parsial daftar aktif tidak wajib untuk skala MVP.  
-**Relasi:** 1:N ke `praktikum`.  
+**Index:** unique index case-insensitive pada `nama`; index parsial daftar aktif `idx_mata_praktikum_aktif(is_active) WHERE is_active = 1`.
+**Trigger:** `trg_mata_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`.
+**Relasi:** 1:N ke `praktikum`.
 **Perubahan/penghapusan:** soft delete saja. Mata nonaktif tidak dapat dipilih untuk kegiatan baru. Kegiatan aktif yang masih merujuk mata nonaktif menyebabkan `DATA_NOT_READY`.
 
 ### 3.2 `kelompok`
@@ -66,9 +71,12 @@
 | `nama` | TEXT COLLATE NOCASE | Tidak | — | UNIQUE, CHECK `trim(nama) <> ''` |
 | `jumlah_peserta` | INTEGER | Tidak | — | CHECK `jumlah_peserta > 0` |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**Index:** unique index case-insensitive pada `nama`.  
-**Relasi:** 1:N ke `praktikum`; N:M ke `slot_waktu` melalui `ketersediaan_kelompok`.  
+**Index:** unique index case-insensitive pada `nama`; index parsial `idx_kelompok_aktif(is_active) WHERE is_active = 1`.
+**Trigger:** `trg_kelompok_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`.
+**Relasi:** 1:N ke `praktikum`; N:M ke `slot_waktu` melalui `ketersediaan_kelompok`.
 **Perubahan/penghapusan:** soft delete. Kelompok nonaktif yang dirujuk kegiatan aktif menyebabkan `DATA_NOT_READY`.
 
 ### 3.3 `asisten`
@@ -80,9 +88,12 @@
 | `id` | INTEGER | Tidak | — | PRIMARY KEY |
 | `nama` | TEXT | Tidak | — | CHECK `trim(nama) <> ''`; tidak UNIQUE |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**Index:** index `asisten(nama)` boleh ditambahkan untuk pencarian, tetapi bukan unique.  
-**Relasi:** 1:N ke `praktikum`; N:M ke `slot_waktu` melalui `ketersediaan_asisten`.  
+**Index:** index `asisten(nama)` boleh ditambahkan untuk pencarian, tetapi bukan unique; index parsial `idx_asisten_aktif(is_active) WHERE is_active = 1`.
+**Trigger:** `trg_asisten_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`.
+**Relasi:** 1:N ke `praktikum`; N:M ke `slot_waktu` melalui `ketersediaan_asisten`.
 **Perubahan/penghapusan:** soft delete. Asisten nonaktif yang dirujuk kegiatan aktif menyebabkan `DATA_NOT_READY`.
 
 ### 3.4 `laboratorium`
@@ -95,9 +106,12 @@
 | `nama` | TEXT COLLATE NOCASE | Tidak | — | UNIQUE, CHECK `trim(nama) <> ''` |
 | `kapasitas` | INTEGER | Tidak | — | CHECK `kapasitas > 0` |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**Index:** unique index case-insensitive pada `nama`.  
-**Relasi:** menjadi kandidat assignment solver; ID historis disalin ke `detail_jadwal`.  
+**Index:** unique index case-insensitive pada `nama`; index parsial `idx_laboratorium_aktif(is_active) WHERE is_active = 1`.
+**Trigger:** `trg_lab_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`.
+**Relasi:** menjadi kandidat assignment solver; ID historis disalin ke `detail_jadwal`.
 **Perubahan/penghapusan:** soft delete. Laboratorium nonaktif dikeluarkan dari kandidat solver.
 
 ### 3.5 `slot_waktu`
@@ -111,10 +125,12 @@
 | `jam_mulai` | TEXT | Tidak | — | Format tepat `HH:MM` |
 | `jam_selesai` | TEXT | Tidak | — | Format tepat `HH:MM`; tepat 120 menit setelah mulai |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**Unique:** `UNIQUE(hari, jam_mulai, jam_selesai)`.  
-**Index:** `idx_slot_waktu_hari_aktif(hari, jam_mulai, jam_selesai) WHERE is_active=1`.  
-**Check/trigger:** jam harus valid, selesai lebih besar dari mulai pada hari yang sama, dan durasi tepat 120 menit. Trigger SQLite wajib menolak overlap antar-slot aktif pada `INSERT`, perubahan hari/jam, dan reaktivasi. Kondisi overlap: `lama.jam_mulai < baru.jam_selesai AND baru.jam_mulai < lama.jam_selesai` pada hari yang sama. Slot bersebelahan diperbolehkan. Flask melakukan validasi yang sama untuk pesan ramah.  
+**Unique:** `UNIQUE(hari, jam_mulai, jam_selesai)`.
+**Index:** `idx_slot_waktu_hari_aktif(hari, jam_mulai, jam_selesai) WHERE is_active=1`.
+**Check/trigger:** jam harus valid, selesai lebih besar dari mulai pada hari yang sama, dan durasi tepat 120 menit. Trigger SQLite wajib menolak overlap antar-slot aktif pada `INSERT`, perubahan hari/jam, dan reaktivasi. Trigger `trg_slot_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`. Kondisi overlap: `lama.jam_mulai < baru.jam_selesai AND baru.jam_mulai < lama.jam_selesai` pada hari yang sama. Slot bersebelahan diperbolehkan. Flask melakukan validasi yang sama untuk pesan ramah.
 **Perubahan/penghapusan:** soft delete; slot nonaktif dikeluarkan dari kandidat solver.
 
 ### 3.6 `praktikum`
@@ -128,10 +144,13 @@
 | `kelompok_id` | INTEGER | Tidak | — | FK → `kelompok.id` |
 | `asisten_id` | INTEGER | Tidak | — | FK → `asisten.id` |
 | `is_active` | INTEGER | Tidak | 1 | CHECK `is_active IN (0,1)` |
+| `created_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char, immutable |
+| `updated_at` | TEXT | Tidak | strftime UTC | RFC 3339 UTC fixed-width 24 char |
 
-**FK:** seluruhnya `ON UPDATE RESTRICT ON DELETE RESTRICT`.  
-**Index:** `idx_praktikum_mata(mata_praktikum_id)`, `idx_praktikum_kelompok(kelompok_id)`, `idx_praktikum_asisten(asisten_id)`, dan index parsial `idx_praktikum_aktif(id) WHERE is_active=1`.  
-**Unique:** tidak ada unique gabungan tiga FK; kebutuhan itu belum menjadi keputusan bisnis.  
+**FK:** seluruhnya `ON UPDATE RESTRICT ON DELETE RESTRICT`.
+**Index:** `idx_praktikum_mata(mata_praktikum_id)`, `idx_praktikum_kelompok(kelompok_id)`, `idx_praktikum_asisten(asisten_id)`, dan index parsial `idx_praktikum_aktif(id) WHERE is_active=1`.
+**Trigger:** `trg_praktikum_created_at_immutable` menolak perubahan `created_at` pada `UPDATE`.
+**Unique:** tidak ada unique gabungan tiga FK; kebutuhan itu belum menjadi keputusan bisnis.
 **Perubahan/penghapusan:** tidak memiliki `nama`; label mata diperoleh melalui FK. Soft delete saja. Pembuatan, pengubahan, atau reaktivasi kegiatan aktif harus menolak referensi master nonaktif.
 
 ### 3.7 `ketersediaan_kelompok`
@@ -301,7 +320,7 @@ C05–C07 menggunakan semantik interval half-open. Karena slot aktif global tida
 | Buat/consume/expire/stale/cleanup preview | C | Tetap | Tetap | Preview bukan sumber solver. |
 | Buat atau transisikan versi jadwal | C | Tetap | Sesuai state save | Riwayat bukan dataset solver. |
 
-Kategori: **A** revision naik dan active invalid; **B** revision naik tetapi active tetap valid; **C** revision dan status active tidak berubah. Setiap kenaikan revision membuat preview `ready` lama stale secara semantik; status `stale` dipersistensikan ketika preview diperiksa, bukan lewat update massal.
+Kategori: **A** revision naik dan active invalid; **B** revision naik tetapi active tetap valid; **C** revision dan status active tidak berubah. Setiap kenaikan revision membuat preview `ready` lama stale secara semantik; status `stale` dipersistensikan ketika preview diperiksa, bukan lewat update massal. Sesuai DEC-060, setiap mutasi efektif (Kategori A dan B) memperbarui kolom `updated_at` pada entitas yang bersangkutan bersama kenaikan `source_revision`. Permintaan no-op (Kategori C) tidak mengubah `updated_at` maupun `source_revision`.
 
 Kasus dengan beberapa mutasi dalam satu transaksi memakai dampak terkuat: bila satu mutasi kategori A, revision tetap hanya naik satu kali dan jadwal active diinvalidasi satu kali.
 
