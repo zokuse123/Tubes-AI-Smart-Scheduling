@@ -1,0 +1,72 @@
+# DECISIONS.md
+Smart Lab Scheduling System | 18 Oktober 2026 | Keputusan disepakati dalam diskusi, implementasi belum dimulai.
+
+| ID | Keputusan |
+|---|---|
+| DEC-001 | Jadwal tersimpan sebagai versi; perubahan data relevan mengubah `active` menjadi `invalid`, riwayat tidak dihapus. |
+| DEC-002 | Generate, Preview, dan Simpan adalah operasi terpisah. |
+| DEC-003 | Setiap versi menyimpan snapshot historis mandiri. |
+| DEC-004 | Jadwal mingguan berulang Senin–Jumat; pengecualian tanggal bukan MVP. |
+| DEC-005 | Tepat satu kelompok dan satu asisten ditetapkan untuk setiap kegiatan praktikum. |
+| DEC-006 | Setiap praktikum/slot berdurasi tetap 120 menit. |
+| DEC-007 | Soft delete (`is_active`); tidak ada hard delete melalui UI MVP. |
+| DEC-008 | Mengaktifkan kembali data tidak mengaktifkan ulang jadwal `invalid`. |
+| DEC-009 | Preview sementara disimpan di SQLite dengan token. |
+| DEC-010 | Preview kedaluwarsa setelah 30 menit. |
+| DEC-011 | Batas waktu proses solver Prolog 30 detik; timeout bukan unsatisfiable. |
+| DEC-012 | Batas maksimal dataset diputuskan setelah benchmark; angka awal hanya target pengujian. |
+| DEC-013 | `mata_praktikum` adalah katalog jenis praktikum yang terpisah dari kegiatan `praktikum`; setiap kegiatan mengacu tepat pada satu mata praktikum, satu kelompok, dan satu asisten, sedangkan Prolog menjadwalkan kegiatan. `mata_praktikum` memakai soft delete; mata nonaktif tidak dapat dipakai untuk kegiatan baru dan referensi aktif kepadanya menyebabkan masalah kesiapan data. |
+| DEC-014 | `source_revision` dan invalidasi terpisah. Setiap transaksi yang mengubah dataset efektif atau label aktif dalam snapshot menaikkan revision tepat satu kali; hanya perubahan yang memengaruhi validitas, cakupan, atau kelayakan jadwal menginvalidasi versi active. Perubahan label saja tidak menginvalidasi; no-op tidak menaikkan revision. |
+| DEC-015 | Master yang masih dirujuk kegiatan aktif boleh dinonaktifkan tanpa menghapus relasi. Mutasi menaikkan revision dan, bila relevan, menginvalidasi jadwal active. Referensi aktif ke mata praktikum, kelompok, atau asisten nonaktif menyebabkan `DATA_NOT_READY`; laboratorium dan slot nonaktif dikeluarkan dari kandidat solver. |
+| DEC-016 | Versi jadwal berstatus `active`, `invalid`, atau `archived`. Versi baru dibuat active; hanya transisi `active → invalid` dan `active → archived` yang diizinkan. Invalid dan archived terminal dan tidak dapat diaktifkan kembali pada MVP. |
+| DEC-017 | Preview berstatus `ready`, `consumed`, `expired`, atau `stale`. Hanya transisi `ready → consumed/expired/stale` yang diizinkan dan semua status selain ready terminal. Preview hanya dibuat setelah solver sukses. |
+| DEC-018 | Semua timestamp backend memakai RFC 3339 UTC fixed-width dengan milidetik (`YYYY-MM-DDTHH:MM:SS.sssZ`); backend adalah sumber waktu TTL dan transaksi. |
+| DEC-019 | `versi_jadwal.snapshot_json` adalah sumber kebenaran historis; `detail_jadwal` adalah indeks relasional. Keduanya dibuat dari hasil yang sama dalam satu transaksi dan immutable setelah commit. |
+| DEC-020 | `detail_jadwal.versi_id` adalah FK ke versi. ID praktikum, slot, dan laboratorium pada detail adalah ID historis tanpa FK hidup. FK data operasional memakai `ON UPDATE RESTRICT ON DELETE RESTRICT`; tidak ada hard delete master melalui UI MVP. |
+| DEC-021 | Save preview memakai `BEGIN IMMEDIATE` dan satu transaksi atomik untuk validasi, revision check, pengarsipan active lama, pembuatan versi/detail, dan conditional consume. Kegagalan rollback; conditional update wajib memengaruhi tepat satu baris; DB menjamin maksimal satu active dengan partial unique index. |
+| DEC-022 | `source_revision` disimpan di `system_metadata`, di-seed `0`, dan bertambah tepat satu kali per transaksi mutasi efektif. Increment serta invalidasi yang diperlukan berada dalam transaksi yang sama. |
+| DEC-023 | Slot aktif pada hari sama tidak boleh overlap. Format dan durasi divalidasi, trigger SQLite melindungi insert/update/reaktivasi, Flask memberi error ramah, dan interval memakai semantik half-open `[start,end)`. |
+| DEC-024 | Generate membaca dataset dan revision dalam transaksi baca singkat, menjalankan Prolog di luar transaksi, lalu membandingkan revision sebelum menyimpan preview. Hasil ditolak sebagai stale bila revision berubah; tidak ada retry otomatis dan tidak ada write lock selama solver. |
+| DEC-025 | Nama asisten tidak wajib unik; identitas dibedakan oleh primary key. Nama master lain yang dipersyaratkan unik menggunakan case-insensitive uniqueness. |
+| DEC-026 | Preview terminal dapat dibersihkan setelah retensi 7 hari sejak menjadi terminal. Tidak ada background scheduler pada MVP; cleanup manual/maintenance tidak mengubah revision atau jadwal active. |
+| DEC-027 | Aktivasi ulang versi jadwal historis tidak didukung pada MVP; pengguna harus menjalankan generate, preview, dan save untuk membuat versi active baru. |
+| DEC-028 | Setiap generate memakai satu subprocess SWI-Prolog baru. Transport utama: satu JSON UTF-8 tanpa BOM melalui stdin, tepat satu objek JSON melalui stdout, dan diagnostik melalui stderr. Tidak memakai temporary file atau solver persisten pada MVP. |
+| DEC-029 | Entrypoint solver adalah `solver_cli:main/0` pada rencana path `prolog/solver_cli.pl`. Gunakan executable terkonfigurasi, argumen list `-q -f none -s <absolute-path> -g solver_cli:main -t halt`, dan Python `shell=False`. Data pengguna tidak masuk goal atau klausa Prolog. |
+| DEC-030 | Exit code `0` untuk success/unsatisfiable, `2` untuk invalid_input, dan `3` untuk internal_error. Exit lain adalah process error. Flask memvalidasi pasangan exit/status; JSON rusak, kosong, ganda, atau tidak sesuai adalah protocol error. Timeout/crash bukan unsatisfiable. |
+| DEC-031 | JSON input solver versi 1 memakai snake_case dan memuat schema version, revision, delapan array domain/relasi aktif, ID positif, hari 1–5, waktu 120 menit, dan allowlist availability. Label tidak dikirim. Solver data dan snapshot source dibaca dalam transaksi yang sama; mata praktikum bukan variabel CSP. |
+| DEC-032 | JSON output solver versi 1 memiliki status success, unsatisfiable, invalid_input, atau internal_error; semua respons memuat schema version, source revision, dan status. Success memuat assignment lengkap, unsatisfiable memuat array kosong, dan error memuat objek terstruktur. Input tak terparse boleh memakai revision null; success tidak boleh parsial. |
+| DEC-033 | Tanpa kegiatan praktikum aktif, Flask mengembalikan `DATA_NOT_READY`, tidak memanggil solver, dan tidak membuat preview. |
+| DEC-034 | Availability kosong adalah domain valid yang berarti tidak tersedia. Solver boleh menyimpulkan unsatisfiable; kondisi ini bukan malformed input atau referensi rusak. |
+| DEC-035 | Flask memverifikasi assignment konkret terhadap C01–C09 tanpa pencarian, backtracking, optimisasi, atau pembuatan alternatif. Pelanggaran hasil solver menjadi protocol/integrity error dan tidak membuat preview. |
+| DEC-036 | Solver memakai SWI-Prolog CLP(FD) dan immutable request terms, tanpa `assertz/1` untuk request. Kegiatan adalah variabel jadwal; mata bukan variabel. Domain dipangkas berdasarkan availability/kapasitas sebelum labeling; representasi dan labeling final ditentukan lewat benchmark. |
+| DEC-037 | Entitas dan availability diurutkan kanonis, strategi labeling tetap per konfigurasi benchmark, hanya solusi pertama diambil, dan assignment diurutkan menurut praktikum ID. Urutan SQLite selalu memakai `ORDER BY`. |
+| DEC-038 | stdout hanya JSON protokol; stderr hanya diagnostik. Banner/progress/warning/debug dilarang di stdout; dataset lengkap/data sensitif tidak dicetak; pesan publik tidak memakai stderr mentah; exception ditangani di boundary CLI bila memungkinkan. |
+| DEC-039 | Batas stdout 1 MiB dan stderr 256 KiB ditegakkan saat stream dibaca. Pelanggaran menghentikan proses, membersihkan resource, menjadi protocol/process error, dan tidak membuat preview. Capture harus bounded dan bebas deadlock. |
+| DEC-040 | Path SWI-Prolog berasal dari konfigurasi backend, memakai absolute path bila tersedia, dan diperiksa saat startup/health check. Lokasi Windows tidak diasumsikan; executable hilang menjadi `SOLVER_UNAVAILABLE`. |
+| DEC-041 | Timeout solver 30 detik. MVP menganggap solver satu proses tanpa child; Flask menghentikan proses, menunggu terminasi, dan menutup/drain pipe dengan aman. Tidak ada preview dan hasilnya `SOLVER_TIMEOUT`; child process kelak memerlukan evaluasi ulang. |
+| DEC-042 | Adapter membedakan `SOLVER_TIMEOUT`, `SOLVER_UNAVAILABLE`, `SOLVER_PROTOCOL_ERROR`, `SOLVER_PROCESS_ERROR`, `SOLVER_INTERNAL_ERROR`, `SOLVER_INVALID_INPUT`, `DATA_NOT_READY`, dan `STALE_GENERATION`. Kode internal stabil; pesan publik aman; HTTP status ditunda ke TASK 05. |
+| DEC-043 | REST API memakai base path `/api/v1`, field JSON `snake_case`, envelope sukses `{"data": ...}`, envelope error `{"error":{"code":"...","message":"...","details":null}}`, dan metadata pagination baku. Kode error stabil dan pesan publik aman. |
+| DEC-044 | Status sukses: GET/PATCH/PUT `200`, POST create resource `201`, generate success maupun unsatisfiable `200`, dan save `201`. Unsatisfiable adalah hasil komputasi valid. |
+| DEC-045 | Mapping HTTP error dikunci: `400` untuk INVALID_JSON/INVALID_QUERY/UNKNOWN_FIELD/READ_ONLY_FIELD; `404` untuk RESOURCE_NOT_FOUND/PREVIEW_NOT_FOUND; `409` untuk DUPLICATE_NAME/INACTIVE_REFERENCE/DATA_NOT_READY/STALE_GENERATION/STALE_PREVIEW/PREVIEW_EXPIRED/PREVIEW_CONSUMED; `413` PAYLOAD_TOO_LARGE; `415` UNSUPPORTED_MEDIA_TYPE; `422` VALIDATION_ERROR/INVALID_REFERENCE; `502` untuk empat error solver protocol/process/internal/invalid-input; `503` SOLVER_UNAVAILABLE/DATABASE_BUSY; `504` SOLVER_TIMEOUT; `500` DATABASE_ERROR/INTERNAL_ERROR. |
+| DEC-046 | GET `/api/v1/jadwal/aktif` tanpa versi active mengembalikan HTTP `200` dengan `{"data":null}`. |
+| DEC-047 | Enam resource master/kegiatan masing-masing mempunyai list, detail, create, partial update, dan status update. Create selalu aktif; `is_active` hanya melalui endpoint status; field sistem/read-only ditolak; tidak ada DELETE pada MVP. |
+| DEC-048 | PATCH bersifat parsial, wajib memuat minimal satu field writable, menolak null pada field non-nullable, dan memperlakukan nilai identik sebagai no-op tanpa revision maupun invalidation. |
+| DEC-049 | Availability kelompok/asisten memakai GET dan PUT full replacement `slot_ids`; array kosong valid, input diperlakukan sebagai himpunan, duplikat/ID invalid/nonaktif ditolak. Operasi boleh untuk owner nonaktif dan tidak menaikkan revision sampai reaktivasi relevan. |
+| DEC-050 | Pagination default page 1 dan page_size 20 (maksimum 100), sort_order asc, serta filter master is_active true. History default created_at desc dan status all. Sort memakai whitelist, query invalid ditolak, halaman lewat akhir kosong, dan search hasil trim maksimal 100 karakter; pencarian praktikum via nama relasi ditunda. |
+| DEC-051 | Generate hanya menerima objek kosong. Success mengembalikan preview ready, revision, timestamp, ringkasan, dan assignment display; unsatisfiable mengembalikan HTTP 200, assignment kosong, pesan aman, serta tidak membuat preview. |
+| DEC-052 | Save hanya menerima `preview_id`; sukses HTTP 201 mengembalikan versi active lengkap, mengonsumsi preview, mengarsipkan active lama, dan mempertahankan riwayat immutable dalam transaksi DEC-021. |
+| DEC-053 | Generate, save, active, dan detail history memakai satu bentuk nested assignment display. Generate memakai snapshot source sebelum solver; keluaran tersimpan memakai snapshot immutable dan tidak JOIN ulang ke master. Assignment display bukan input writable. |
+| DEC-054 | Setelah solver dan verifier sukses, pemeriksaan revision terkini dan insert preview dilindungi satu transaksi SQLite. Revision berbeda menghasilkan STALE_GENERATION. Transaksi database tidak ditahan selama solver berjalan. |
+| DEC-055 | Revision dan invalidation dinilai per dampak transaksi. Revision naik untuk perubahan input solver atau label snapshot; active hanya invalid bila coverage berubah atau assignment tersimpan benar-benar melanggar hard constraint. Preview menjadi stale bila revision naik, sekalipun active tetap valid. |
+| DEC-056 | Prioritas save preview: not found, consumed, stale terminal, expired terminal, ready melewati TTL, ready berbeda revision, lalu save. Pada ready yang sekaligus expired dan stale, expiry menang. Transisi ready ke terminal dipersistensikan atomik walau save ditolak; status terminal tidak diubah lagi. |
+| DEC-057 | List/detail praktikum boleh memuat nested summary read-only mata praktikum, kelompok, dan asisten dari master terkini; write tetap memakai FK integer. History tetap berasal dari snapshot immutable. |
+| DEC-058 | Request mutasi wajib JSON dan maksimal 256 KiB; validasi integer/boolean strict, unknown/read-only field ditolak, SQL terparameterisasi, sort whitelist, error disanitasi, CORS hanya origin Vite lokal terkonfigurasi, tanpa mass assignment dan tanpa authentication pada MVP lokal. CORS bukan authentication. |
+| DEC-059 | GET `/api/v1/health` memeriksa backend, database, dan executable SWI-Prolog tanpa menjalankan CSP penuh atau membocorkan path, traceback, maupun konfigurasi internal. |
+
+**Catatan sinkronisasi:** frasa pada DEC-042 bahwa mapping HTTP ditunda merekam keadaan saat keputusan itu dibuat dan kini **superseded oleh DEC-045**. DEC-055 memperinci aturan dampak DEC-014; tidak ada perubahan pada prinsip pemisahan revision dan invalidation.
+
+## Belum diputuskan / wajib direview sebelum implementasi
+- Izin dosen untuk Python/React sebagai pendukung Prolog, dan tanggal tepat pertemuan 11.
+- Strategi labeling CLP(FD) terbaik dan batas dataset berdasarkan hasil benchmark nyata.
+- Kebijakan penghapusan manual versi jadwal historis; aktivasi ulang sudah dilarang oleh DEC-027.
+- Cara mengukur benchmark, dataset contoh, serta batas maksimal berdasarkan hasil nyata.
