@@ -140,10 +140,19 @@ def test_exit_status_mismatch_and_two_json_objects(tmp_path):
 
 
 def test_simultaneous_stdout_stderr_does_not_deadlock(tmp_path):
+    response = json.dumps({
+        "schema_version": 2,
+        "source_revision": 7,
+        "status": "unsatisfiable",
+        "assignments": [],
+        "domain_candidates": [
+            {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+            {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+        ],
+    }, separators=(",", ":"))
     body = (
         "forall(between(1,10000,_),put_code(user_error,65)),"
-        "write('{\"schema_version\":1,\"source_revision\":7,"
-        "\"status\":\"unsatisfiable\",\"assignments\":[]}')"
+        f"write('{response}')"
     )
     result = run_solver(load(), config(cli(tmp_path, body, "both.pl")))
     assert result["status"] == "unsatisfiable"

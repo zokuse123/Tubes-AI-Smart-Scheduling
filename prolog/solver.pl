@@ -1,8 +1,10 @@
 :- module(solver,
           [ solve/2,
+            solve_with_diagnostics/3,
             solve_with_options/3,
             solve_with_strategy/3,
             construct_model/3,
+            construct_model/4,
             search_model/1,
             materialize_model/2
           ]).
@@ -10,8 +12,32 @@
 :- use_module(library(clpfd)).
 :- use_module(library(ordsets)).
 
+:- meta_predicate search_and_materialize(0, 0, -).
+
 solve(Data, Assignments) :-
     solve_with_options(Data, [leftmost, enum, up], Assignments).
+
+solve_with_diagnostics(Data, Outcome, DomainCandidates) :-
+    construct_model(Data, global([leftmost, enum, up]), Model,
+                    DomainCandidates),
+    search_and_materialize(search_model(Model),
+                           materialize_model(Model, Assignments),
+                           SearchOutcome),
+    ( SearchOutcome == success
+    -> Outcome = success(Assignments)
+    ;  Outcome = unsatisfiable
+    ).
+
+search_and_materialize(SearchGoal, MaterializeGoal, Outcome) :-
+    ( once(call(SearchGoal))
+    -> ( once(call(MaterializeGoal))
+       -> Outcome = success
+       ;  throw(error(solver_materialization_failed,
+                      context(solver:search_and_materialize/3,
+                              'Search succeeded but assignment materialization failed.')))
+       )
+    ;  Outcome = unsatisfiable
+    ).
 
 solve_with_options(Data, LabelingOptions, Assignments) :-
     solve_with_strategy(Data, global(LabelingOptions), Assignments).
@@ -21,19 +47,29 @@ solve_with_strategy(Data, Strategy, Assignments) :-
     search_model(Model),
     materialize_model(Model, Assignments).
 
-construct_model(Data, Strategy, solver_model(Tasks, Search)) :-
-    maplist(make_task(Data), Data.praktikum, Tasks),
-    constrain_conflicts(Tasks),
-    strategy_search(Strategy, Tasks, Search).
+construct_model(Data, Strategy, Model) :-
+    construct_model(Data, Strategy, Model, _).
 
-search_model(solver_model(_, global(Options, Variables))) :-
+construct_model(Data, Strategy, Model, DomainCandidates) :-
+    maplist(make_task(Data), Data.praktikum, Tasks, DomainCandidates, Feasibilities),
+    ( maplist(==(feasible), Feasibilities),
+      constrain_conflicts(Tasks)
+    -> strategy_search(Strategy, Tasks, Search),
+       Model = solver_model(Tasks, Search, feasible)
+    ;  Model = solver_model(Tasks, no_search, inconsistent_model)
+    ).
+
+search_model(solver_model(_, _, inconsistent_model)) :-
+    !,
+    fail.
+search_model(solver_model(_, global(Options, Variables), feasible)) :-
     labeling(Options, Variables).
-search_model(solver_model(Tasks, paired(Options))) :-
+search_model(solver_model(Tasks, paired(Options), feasible)) :-
     maplist(label_task(Options), Tasks).
-search_model(solver_model(_, combined(Options, Codes))) :-
+search_model(solver_model(_, combined(Options, Codes), feasible)) :-
     labeling(Options, Codes).
 
-materialize_model(solver_model(Tasks, _), Assignments) :-
+materialize_model(solver_model(Tasks, _, _), Assignments) :-
     maplist(task_assignment, Tasks, Assignments).
 
 strategy_search(global(Options), Tasks, global(Options, Variables)) :-
@@ -59,7 +95,8 @@ task_pair_code(task(_, Slot, Lab), Code) :-
             Tuples),
     tuples_in([[Code, Slot, Lab]], Tuples).
 
-make_task(Data, Praktikum, task(Praktikum, SlotVar, LabVar)) :-
+make_task(Data, Praktikum, task(Praktikum, SlotVar, LabVar),
+          DomainCandidate, Feasibility) :-
     peserta(Data.kelompok, Praktikum.kelompok_id, JumlahPeserta),
     available_slots(Data.ketersediaan_kelompok, kelompok_id,
                     Praktikum.kelompok_id, KelompokSlots),
@@ -67,8 +104,19 @@ make_task(Data, Praktikum, task(Praktikum, SlotVar, LabVar)) :-
                     Praktikum.asisten_id, AsistenSlots),
     ord_intersection(KelompokSlots, AsistenSlots, FeasibleSlots),
     capable_labs(Data.laboratorium, JumlahPeserta, FeasibleLabs),
-    domain_from_values(SlotVar, FeasibleSlots),
-    domain_from_values(LabVar, FeasibleLabs).
+    length(FeasibleSlots, SlotCount),
+    length(FeasibleLabs, LaboratoryCount),
+    TheoreticalPairs is SlotCount * LaboratoryCount,
+    DomainCandidate = _{praktikum_id:Praktikum.id,
+                        slot_count:SlotCount,
+                        laboratory_count:LaboratoryCount,
+                        theoretical_pairs:TheoreticalPairs},
+    domain_from_values(SlotVar, FeasibleSlots, SlotFeasibility),
+    domain_from_values(LabVar, FeasibleLabs, LabFeasibility),
+    ( SlotFeasibility == feasible, LabFeasibility == feasible
+    -> Feasibility = feasible
+    ;  Feasibility = empty_domain
+    ).
 
 peserta([Kelompok|_], Id, Jumlah) :-
     Kelompok.id =:= Id,
@@ -93,9 +141,13 @@ capable_labs(Labs, JumlahPeserta, LabIds) :-
             ),
             LabIds).
 
-domain_from_values(Variable, Values) :-
-    list_to_fdset(Values, Set),
-    Variable in_set Set.
+domain_from_values(Variable, Values, Feasibility) :-
+    ( Values == []
+    -> Feasibility = empty_domain
+    ;  list_to_fdset(Values, Set),
+       Variable in_set Set,
+       Feasibility = feasible
+    ).
 
 constrain_conflicts([]).
 constrain_conflicts([Task|Rest]) :-

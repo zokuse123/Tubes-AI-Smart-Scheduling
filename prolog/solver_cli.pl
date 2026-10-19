@@ -12,7 +12,7 @@
 :- use_module(solver).
 
 main :-
-    main_with_solver(solver:solve).
+    main_with_solver(solver:solve_with_diagnostics).
 
 main_with_solver(Solver) :-
     catch(run_main(Solver, ExitCode),
@@ -31,7 +31,7 @@ write_response(Response) :-
     flush_output(current_output).
 
 process_json_string(InputString, Response, ExitCode) :-
-    process_json_string_with_solver(InputString, solver:solve,
+    process_json_string_with_solver(InputString, solver:solve_with_diagnostics,
                                     Response, ExitCode).
 
 process_json_string_with_solver(InputString, Solver, Response, ExitCode) :-
@@ -41,7 +41,7 @@ process_json_string_with_solver(InputString, Solver, Response, ExitCode) :-
     ( var(ParseError)
     -> process_request_with_solver(Input, Solver, Response, ExitCode)
     ;  Response = _{
-           schema_version:1,
+           schema_version:2,
            source_revision:null,
            status:invalid_input,
            error:_{code:'MALFORMED_JSON',
@@ -53,7 +53,8 @@ process_json_string_with_solver(InputString, Solver, Response, ExitCode) :-
     !.
 
 process_request(Input, Response, ExitCode) :-
-    process_request_with_solver(Input, solver:solve, Response, ExitCode).
+    process_request_with_solver(Input, solver:solve_with_diagnostics,
+                                Response, ExitCode).
 
 process_request_with_solver(Input, Solver, Response, ExitCode) :-
     safe_revision(Input, Revision),
@@ -66,28 +67,32 @@ process_request_with_solver(Input, Solver, Response, ExitCode) :-
 
 process_validated(Input, Solver, Response, ExitCode) :-
     validate_input(Input, Data),
-    ( once(call(Solver, Data, Assignments))
-    -> Response = _{schema_version:1,
+    once(call(Solver, Data, Outcome, DomainCandidates)),
+    ( Outcome = success(Assignments)
+    -> Response = _{schema_version:2,
                     source_revision:Data.source_revision,
                     status:success,
-                    assignments:Assignments}
-    ;  Response = _{schema_version:1,
+                    assignments:Assignments,
+                    domain_candidates:DomainCandidates}
+    ; Outcome == unsatisfiable
+    -> Response = _{schema_version:2,
                     source_revision:Data.source_revision,
                     status:unsatisfiable,
-                    assignments:[]}
+                    assignments:[],
+                    domain_candidates:DomainCandidates}
     ),
     ExitCode = 0.
 
 caught_response(validation_error(Code, Message, Path), Revision,
                 Response, 2) :-
     !,
-    Response = _{schema_version:1,
+    Response = _{schema_version:2,
                  source_revision:Revision,
                  status:invalid_input,
                  error:_{code:Code, message:Message, path:Path}}.
 caught_response(Error, Revision, Response, 3) :-
     sanitized_diagnostic(Error),
-    Response = _{schema_version:1,
+    Response = _{schema_version:2,
                  source_revision:Revision,
                  status:internal_error,
                  error:_{code:'SOLVER_INTERNAL_ERROR',
@@ -110,7 +115,7 @@ sanitized_diagnostic(Error) :-
 
 boundary_failure(Error, 3) :-
     sanitized_diagnostic(Error),
-    Response = _{schema_version:1,
+    Response = _{schema_version:2,
                  source_revision:null,
                  status:internal_error,
                  error:_{code:'SOLVER_INTERNAL_ERROR',

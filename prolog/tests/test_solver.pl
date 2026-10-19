@@ -69,6 +69,7 @@ process_dict(Input, Response, ExitCode) :-
 
 assignment_praktikum_id(Assignment, Id) :- Id = Assignment.praktikum_id.
 praktikum_id(Praktikum, Id) :- Id = Praktikum.id.
+domain_candidate_id(Candidate, Id) :- Id = Candidate.praktikum_id.
 slot_id(Slot, Id) :- Id = Slot.id.
 lab_id(Lab, Id) :- Id = Lab.id.
 
@@ -247,13 +248,59 @@ test(empty_dataset_success) :-
                         ketersediaan_kelompok:[], ketersediaan_asisten:[]}),
     process_dict(Empty, Response, 0),
     assertion(Response.status == success),
+    assertion(Response.schema_version == 2),
+    assertion(Response.domain_candidates == []),
     assertion(Response.assignments == []).
 
 test(single_activity_success) :-
     single_task_data(Input),
     process_dict(Input, Response, 0),
     assertion(Response.status == success),
+    assertion(Response.domain_candidates =@= [_{praktikum_id:1, slot_count:2,
+                                                laboratory_count:1,
+                                                theoretical_pairs:2}]),
     assertion(Response.assignments = [_]).
+
+test(domain_candidates_are_based_on_initial_domains) :-
+    load_fixture('valid.json', Input),
+    process_dict(Input, Response, 0),
+    assertion(Response.domain_candidates =@= [
+        _{praktikum_id:1, slot_count:2, laboratory_count:1,
+          theoretical_pairs:2},
+        _{praktikum_id:2, slot_count:2, laboratory_count:1,
+          theoretical_pairs:2}
+    ]).
+
+test(domain_candidates_follow_praktikum_id_not_input_order) :-
+    load_fixture('valid.json', Input),
+    Input.praktikum = [First, Second],
+    ReversedIds = [First.put(id, 20), Second.put(id, 5)],
+    process_dict(Input.put(praktikum, ReversedIds), Response, 0),
+    maplist(domain_candidate_id, Response.domain_candidates, CandidateIds),
+    assertion(CandidateIds == [5,20]),
+    maplist(assignment_praktikum_id, Response.assignments, AssignmentIds),
+    assertion(AssignmentIds == [5,20]).
+
+test(unsat_empty_slot_domain_is_reported_without_changing_status) :-
+    load_fixture('valid.json', Input),
+    Candidate = Input.put(ketersediaan_kelompok, []),
+    process_dict(Candidate, Response, 0),
+    assertion(Response.status == unsatisfiable),
+    assertion(Response.domain_candidates =@= [
+        _{praktikum_id:1, slot_count:0, laboratory_count:1,
+          theoretical_pairs:0},
+        _{praktikum_id:2, slot_count:0, laboratory_count:1,
+          theoretical_pairs:0}
+    ]).
+
+test(unsat_empty_laboratory_domain_is_reported_without_changing_status) :-
+    load_fixture('unsatisfiable.json', Input),
+    process_dict(Input, Response, 0),
+    assertion(Response.status == unsatisfiable),
+    assertion(Response.domain_candidates =@= [
+        _{praktikum_id:1, slot_count:1, laboratory_count:0,
+          theoretical_pairs:0}
+    ]).
 
 test(adjacent_slots_are_valid) :-
     load_fixture('valid.json', Input),
@@ -379,7 +426,9 @@ test(cli_stdout_is_single_json_and_exit_zero) :-
     assertion(ExitCode == 0),
     assertion(Stderr == ""),
     assert_single_json_stdout(Stdout, Response),
-    assertion(Response.status == success).
+    assertion(Response.status == success),
+    assertion(Response.schema_version == 2),
+    assertion(is_list(Response.domain_candidates)).
 
 test(cli_unsatisfiable_exit_zero) :-
     fixture_string('unsatisfiable.json', Input),
@@ -387,7 +436,9 @@ test(cli_unsatisfiable_exit_zero) :-
     assertion(ExitCode == 0),
     assertion(Stderr == ""),
     assert_single_json_stdout(Stdout, Response),
-    assertion(Response.status == unsatisfiable).
+    assertion(Response.status == unsatisfiable),
+    assertion(Response.schema_version == 2),
+    assertion(is_list(Response.domain_candidates)).
 
 test(cli_invalid_input_exit_two) :-
     load_fixture('valid.json', Dict),
@@ -396,14 +447,40 @@ test(cli_invalid_input_exit_two) :-
     assertion(ExitCode == 2),
     assertion(Stderr == ""),
     assert_single_json_stdout(Stdout, Response),
-    assertion(Response.status == invalid_input).
+    assertion(Response.status == invalid_input),
+    assertion(Response.schema_version == 2),
+    assertion(\+ get_dict(domain_candidates, Response, _)).
 
 test(cli_malformed_exit_two) :-
     fixture_string('malformed.json', Input),
     run_cli(Input, Stdout, _Stderr, ExitCode),
     assertion(ExitCode == 2),
     assert_single_json_stdout(Stdout, Response),
-    assertion(Response.status == invalid_input).
+    assertion(Response.status == invalid_input),
+    assertion(Response.schema_version == 2),
+    assertion(\+ get_dict(domain_candidates, Response, _)).
+
+test(search_failure_is_unsatisfiable) :-
+    solver:search_and_materialize(fail, true, Outcome),
+    assertion(Outcome == unsatisfiable).
+
+test(search_success_materializes_successfully) :-
+    solver:search_and_materialize(true, true, Outcome),
+    assertion(Outcome == success).
+
+test(materialization_logical_failure_throws_internal_error) :-
+    catch(solver:search_and_materialize(true, fail, _), Error, true),
+    assertion(Error = error(solver_materialization_failed, _)).
+
+test(cli_materialization_logical_failure_is_internal_error) :-
+    fixture_string('valid.json', Input),
+    run_materialization_failure_cli(Input, Stdout, Stderr, ExitCode),
+    assert_internal_materialization_response(Stdout, Stderr, ExitCode).
+
+test(cli_materialization_exception_is_internal_error) :-
+    fixture_string('valid.json', Input),
+    run_materialization_exception_cli(Input, Stdout, Stderr, ExitCode),
+    assert_internal_materialization_response(Stdout, Stderr, ExitCode).
 
 test(cli_internal_error_exit_three_and_sanitized) :-
     fixture_string('valid.json', Input),
@@ -411,6 +488,8 @@ test(cli_internal_error_exit_three_and_sanitized) :-
     assertion(ExitCode == 3),
     assert_single_json_stdout(Stdout, Response),
     assertion(Response.status == internal_error),
+    assertion(Response.schema_version == 2),
+    assertion(\+ get_dict(domain_candidates, Response, _)),
     assertion(\+ sub_string(Stdout, _, _, _, "test_fault")),
     assertion(sub_string(Stderr, _, _, _, "Solver internal error")),
     assertion(\+ sub_string(Stderr, _, _, _, "source_revision")),
@@ -439,6 +518,27 @@ run_fault_cli(Input, Stdout, Stderr, ExitCode) :-
     source_file(fault_cli:main, FaultCliPath),
     run_cli_file(FaultCliPath, 'fault_cli:main', Input,
                  Stdout, Stderr, ExitCode).
+
+run_materialization_failure_cli(Input, Stdout, Stderr, ExitCode) :-
+    source_file(fault_cli:main, FaultCliPath),
+    run_cli_file(FaultCliPath,
+                 'fault_cli:main_with_materialization_failure', Input,
+                 Stdout, Stderr, ExitCode).
+
+run_materialization_exception_cli(Input, Stdout, Stderr, ExitCode) :-
+    source_file(fault_cli:main, FaultCliPath),
+    run_cli_file(FaultCliPath,
+                 'fault_cli:main_with_materialization_exception', Input,
+                 Stdout, Stderr, ExitCode).
+
+assert_internal_materialization_response(Stdout, Stderr, ExitCode) :-
+    assertion(ExitCode == 3),
+    assert_single_json_stdout(Stdout, Response),
+    assertion(Response.status == internal_error),
+    assertion(Response.schema_version == 2),
+    assertion(\+ get_dict(domain_candidates, Response, _)),
+    assertion(sub_string(Stderr, _, _, _, 'Solver internal error')),
+    assertion(\+ sub_string(Stdout, _, _, _, 'fault_injected')).
 
 run_cli_file(CliPath, Goal, Input, Stdout, Stderr, ExitCode) :-
     current_prolog_flag(executable, Executable),

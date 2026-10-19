@@ -43,10 +43,21 @@ contract_run(Name, Response, ExitCode, Input) :-
 assert_contract(Name, Status, ExitCode) :-
     contract_run(Name, Response, ExitCode, Input),
     assertion(Response.status == Status),
+    assertion(Response.schema_version == 2),
     assertion(Response.source_revision =:= Input.source_revision),
-    ( Status == success -> verify_assignments(Input, Response.assignments)
-    ; Status == unsatisfiable -> assertion(Response.assignments == [])
-    ; assertion(is_dict(Response.error))
+    ( memberchk(Status, [success, unsatisfiable])
+    -> maplist(contract_praktikum_id, Input.praktikum, InputIds),
+       sort(InputIds, ExpectedIds),
+       maplist(domain_candidate_id, Response.domain_candidates, CandidateIds),
+       assertion(CandidateIds == ExpectedIds),
+       forall(member(Candidate, Response.domain_candidates),
+              assertion(Candidate.theoretical_pairs =:=
+                        Candidate.slot_count * Candidate.laboratory_count)),
+       ( Status == success -> verify_assignments(Input, Response.assignments)
+       ; assertion(Response.assignments == [])
+       )
+    ; assertion(is_dict(Response.error)),
+      assertion(\+ get_dict(domain_candidates, Response, _))
     ).
 
 verify_assignments(Input, Assignments) :-
@@ -59,6 +70,7 @@ verify_assignments(Input, Assignments) :-
 
 contract_praktikum_id(P, P.id).
 contract_assignment_id(A, A.praktikum_id).
+domain_candidate_id(C, C.praktikum_id).
 
 verify_assignment(Input, A) :-
     member(P, Input.praktikum), P.id =:= A.praktikum_id,

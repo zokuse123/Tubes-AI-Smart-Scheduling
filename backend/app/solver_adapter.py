@@ -32,6 +32,14 @@ class SolverConfig:
         )
 
 
+class SolverExecution(dict[str, Any]):
+    """Validated v1 solver result with non-persisted CLI diagnostics attached."""
+
+    def __init__(self, response_v1: dict[str, Any], domain_candidates: list[dict[str, int]]):
+        super().__init__(response_v1)
+        self.domain_candidates = domain_candidates
+
+
 def _error(code: str, message: str, status: int) -> APIError:
     return APIError(code, message, status)
 
@@ -232,6 +240,87 @@ def validate_solver_response(response: Any, exit_code: int, source_revision: int
     return response
 
 
+def validate_solver_cli_response(
+    response: Any,
+    exit_code: int,
+    payload: dict[str, Any],
+) -> SolverExecution:
+    """Validate CLI v2, then project the canonical solver result to v1."""
+    source_revision = payload["source_revision"]
+    try:
+        if not isinstance(response, dict):
+            raise ValueError
+        status = response.get("status")
+        expected_exit = {
+            "success": 0,
+            "unsatisfiable": 0,
+            "invalid_input": 2,
+            "internal_error": 3,
+        }
+        if status not in expected_exit or exit_code != expected_exit[status]:
+            raise ValueError
+        if (
+            type(response.get("schema_version")) is not int
+            or response["schema_version"] != 2
+            or type(response.get("source_revision")) is not int
+            or response["source_revision"] != source_revision
+        ):
+            raise ValueError
+
+        if status in ("success", "unsatisfiable"):
+            if set(response) != {
+                "schema_version", "source_revision", "status", "assignments",
+                "domain_candidates",
+            }:
+                raise ValueError
+            candidates = response["domain_candidates"]
+            if not isinstance(candidates, list):
+                raise ValueError
+            expected_ids = sorted(item["id"] for item in payload["praktikum"])
+            maximum_slots = len(payload["slot_waktu"])
+            maximum_laboratories = len(payload["laboratorium"])
+            candidate_ids = []
+            for item in candidates:
+                if not isinstance(item, dict) or set(item) != {
+                    "praktikum_id", "slot_count", "laboratory_count", "theoretical_pairs",
+                }:
+                    raise ValueError
+                if any(type(item[field]) is not int or item[field] < 0 for field in item):
+                    raise ValueError
+                if (
+                    item["slot_count"] > maximum_slots
+                    or item["laboratory_count"] > maximum_laboratories
+                ):
+                    raise ValueError
+                if item["theoretical_pairs"] != item["slot_count"] * item["laboratory_count"]:
+                    raise ValueError
+                candidate_ids.append(item["praktikum_id"])
+            if candidate_ids != expected_ids or len(candidate_ids) != len(set(candidate_ids)):
+                raise ValueError
+        else:
+            if set(response) != {"schema_version", "source_revision", "status", "error"}:
+                raise ValueError
+            _validate_error(response["error"], path_required=status == "invalid_input")
+            candidates = []
+    except (KeyError, TypeError, ValueError):
+        raise _error(
+            "SOLVER_PROTOCOL_ERROR",
+            "Mesin penjadwalan menghasilkan respons tidak valid.",
+            502,
+        ) from None
+
+    response_v1 = {
+        key: value
+        for key, value in response.items()
+        if key != "domain_candidates"
+    }
+    response_v1["schema_version"] = 1
+    validated_v1 = validate_solver_response(response_v1, exit_code, source_revision)
+    if status == "success":
+        verify_assignments(payload, validated_v1["assignments"])
+    return SolverExecution(validated_v1, candidates)
+
+
 def run_solver(payload: dict[str, Any], config: SolverConfig) -> dict[str, Any]:
     executable = _resolve_executable(config.executable)
     cli_path = config.cli_path.resolve()
@@ -254,7 +343,4 @@ def run_solver(payload: dict[str, Any], config: SolverConfig) -> dict[str, Any]:
             raise ValueError
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
         raise _error("SOLVER_PROTOCOL_ERROR", "Mesin penjadwalan menghasilkan respons tidak valid.", 502) from None
-    validated = validate_solver_response(response, exit_code, payload["source_revision"])
-    if validated["status"] == "success":
-        verify_assignments(payload, validated["assignments"])
-    return validated
+    return validate_solver_cli_response(response, exit_code, payload)

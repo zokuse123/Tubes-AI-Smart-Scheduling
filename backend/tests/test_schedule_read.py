@@ -264,8 +264,44 @@ def test_real_generate_save_active_history(app, client, database, monkeypatch):
     from backend.app.solver_adapter import run_solver
     monkeypatch.setattr(scheduling, "run_solver", run_solver)
     generated = client.post("/api/v1/jadwal/generate", json={}).get_json()["data"]
+    with sqlite3.connect(database) as db:
+        preview_row = db.execute(
+            "SELECT hasil_json,snapshot_json FROM preview_jadwal WHERE id=?",
+            (generated["preview_id"],),
+        ).fetchone()
+    assert preview_row is not None
+    stored_result = json.loads(preview_row[0])
+    assert set(stored_result) == {
+        "schema_version", "source_revision", "status", "assignments",
+    }
+    assert stored_result["schema_version"] == 1
+    assert stored_result["source_revision"] == generated["source_revision"]
+    assert stored_result["status"] == "success"
+    assert stored_result["assignments"]
+    assert "domain_candidates" not in stored_result
+    assert "solver_diagnostics" not in stored_result
+    stored_snapshot = json.loads(preview_row[1])
+    assert stored_snapshot["schema_version"] == 1
+    assert stored_snapshot["source_revision"] == generated["source_revision"]
+    assert "domain_candidates" not in stored_snapshot
+    assert "solver_diagnostics" not in stored_snapshot
+    assert [
+        (item["praktikum_id"], item["slot_id"], item["laboratorium_id"])
+        for item in stored_snapshot["assignments"]
+    ] == [
+        (item["praktikum_id"], item["slot_waktu"]["id"], item["laboratorium"]["id"])
+        for item in generated["assignments"]
+    ]
+    assert stored_result["assignments"] != stored_snapshot["assignments"]
+
     saved = client.post("/api/v1/jadwal/simpan", json={"preview_id": generated["preview_id"]})
     assert saved.status_code == 201
+    with sqlite3.connect(database) as db:
+        persisted_result_after_save = db.execute(
+            "SELECT hasil_json FROM preview_jadwal WHERE id=?",
+            (generated["preview_id"],),
+        ).fetchone()[0]
+    assert json.loads(persisted_result_after_save) == stored_result
     assert client.get(ACTIVE).get_json()["data"] == saved.get_json()["data"]
     assert client.get(HISTORY).get_json()["data"][0]["id"] == saved.get_json()["data"]["id"]
     assert client.get(f"{HISTORY}/{saved.get_json()['data']['id']}").get_json()["data"]["assignments"] == generated["assignments"]

@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 
 from backend.app.errors import APIError
-from backend.app.solver_adapter import SolverConfig, run_solver, validate_solver_response
+from backend.app.solver_adapter import (
+    SolverConfig,
+    run_solver,
+    validate_solver_cli_response,
+    validate_solver_response,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,7 +54,62 @@ def test_real_solver_success_and_unsatisfiable():
     success = run_solver(load("valid.json"), config())
     unsat = run_solver(load("unsatisfiable.json"), config())
     assert success["status"] == "success"
+    assert success.domain_candidates == [
+        {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+        {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+    ]
     assert unsat == {"schema_version":1,"source_revision":8,"status":"unsatisfiable","assignments":[]}
+    assert unsat.domain_candidates == [
+        {"praktikum_id": 1, "slot_count": 1, "laboratory_count": 0, "theoretical_pairs": 0}
+    ]
+
+
+def test_cli_v2_domain_diagnostics_are_strictly_validated():
+    payload = load("valid.json")
+    response = {
+        "schema_version": 2,
+        "source_revision": 7,
+        "status": "unsatisfiable",
+        "assignments": [],
+        "domain_candidates": [
+            {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+            {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+        ],
+    }
+    execution = validate_solver_cli_response(response, 0, payload)
+    assert execution == {
+        "schema_version": 1,
+        "source_revision": 7,
+        "status": "unsatisfiable",
+        "assignments": [],
+    }
+    assert execution.domain_candidates == response["domain_candidates"]
+
+
+@pytest.mark.parametrize("mutation", (
+    lambda r: r["domain_candidates"].reverse(),
+    lambda r: r["domain_candidates"].pop(),
+    lambda r: r["domain_candidates"][0].update(praktikum_id=2),
+    lambda r: r["domain_candidates"][0].update(slot_count=True),
+    lambda r: r["domain_candidates"][0].update(slot_count=-1),
+    lambda r: r["domain_candidates"][0].update(theoretical_pairs=99),
+    lambda r: r.update(source_revision=8),
+    lambda r: r["domain_candidates"][0].update(extra=1),
+))
+def test_malformed_cli_v2_domain_diagnostics_are_rejected(mutation):
+    payload = load("valid.json")
+    response = {
+        "schema_version": 2,
+        "source_revision": 7,
+        "status": "unsatisfiable",
+        "assignments": [],
+        "domain_candidates": [
+            {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+            {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+        ],
+    }
+    mutation(response)
+    assert_code("SOLVER_PROTOCOL_ERROR", lambda: validate_solver_cli_response(response, 0, payload))
 
 
 def test_real_solver_invalid_input_and_internal_error():
@@ -106,9 +166,19 @@ def test_schema_revision_exit_and_shape_mismatch(tmp_path):
 
 
 def test_success_is_independently_verified(tmp_path):
+    response = {
+        "schema_version": 2,
+        "source_revision": 7,
+        "status": "success",
+        "assignments": [],
+        "domain_candidates": [
+            {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+            {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
+        ],
+    }
     cli = fake_cli(
         tmp_path,
-        "write('{\"schema_version\":1,\"source_revision\":7,\"status\":\"success\",\"assignments\":[]}')",
+        "write('" + json.dumps(response, separators=(",", ":")) + "')",
     )
     assert_code("SOLVER_PROTOCOL_ERROR", lambda: run_solver(load("valid.json"), config(cli)))
 
