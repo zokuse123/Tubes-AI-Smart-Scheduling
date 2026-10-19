@@ -16,7 +16,12 @@ from backend.app import create_app
 from backend.app import scheduling
 from backend.app import mutations
 from backend.app.db import get_db
-from backend.tests.test_schedule_generate import database, rows, FIXED_NOW
+from backend.tests.test_schedule_generate import (
+    database,
+    rows,
+    FIXED_NOW,
+    solver_execution,
+)
 from backend.tests.route_inventory import EXPECTED_API_OPERATIONS
 
 
@@ -37,11 +42,19 @@ def app(database, monkeypatch):
             INSERT INTO ketersediaan_asisten VALUES (1,2);
         """)
     def solver(payload, config):
-        return {"schema_version": 1, "source_revision": payload["source_revision"],
-                "status": "success", "assignments": [
+        return solver_execution(
+            {"schema_version": 1, "source_revision": payload["source_revision"],
+             "status": "success", "assignments": [
                     {"praktikum_id": 1, "slot_id": 1, "laboratorium_id": 1},
                     {"praktikum_id": 2, "slot_id": 2, "laboratorium_id": 1},
-                ]}
+             ]},
+            [
+                {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1,
+                 "theoretical_pairs": 2},
+                {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1,
+                 "theoretical_pairs": 2},
+            ],
+        )
     monkeypatch.setattr(scheduling, "run_solver", solver)
     return app
 

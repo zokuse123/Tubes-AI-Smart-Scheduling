@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from backend.app import scheduling
+from backend.tests.test_schedule_generate import solver_execution
 from backend.tests.test_schedule_save import app, client, database, preview, generate, save, state
 from backend.tests.route_inventory import EXPECTED_API_OPERATIONS
 
@@ -30,10 +31,14 @@ def seed_three_statuses(client, preview, monkeypatch):
     assert mutation.status_code == 200
     # Remaining activity can still generate a valid schedule.
     def remaining_activity(payload, _config):
-        return {"schema_version": 1, "source_revision": payload["source_revision"],
-                "status": "success", "assignments": [
-                    {"praktikum_id": 2, "slot_id": 2, "laboratorium_id": 1}
-                ]}
+        return solver_execution(
+            {"schema_version": 1, "source_revision": payload["source_revision"],
+             "status": "success", "assignments": [
+                 {"praktikum_id": 2, "slot_id": 2, "laboratorium_id": 1}
+             ]},
+            [{"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1,
+              "theoretical_pairs": 2}],
+        )
     monkeypatch.setattr(scheduling, "run_solver", remaining_activity)
     second_preview = generate(client)
     second = create_saved(client, second_preview)
@@ -264,6 +269,16 @@ def test_real_generate_save_active_history(app, client, database, monkeypatch):
     from backend.app.solver_adapter import run_solver
     monkeypatch.setattr(scheduling, "run_solver", run_solver)
     generated = client.post("/api/v1/jadwal/generate", json={}).get_json()["data"]
+    diagnostics = generated["solver_diagnostics"]
+    assert type(diagnostics["wall_time_ms"]) is int
+    assert diagnostics["wall_time_ms"] >= 0
+    assert diagnostics["verification"] == {"overall": "passed"}
+    assert diagnostics["domain_candidates"] == [
+        {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1,
+         "theoretical_pairs": 2},
+        {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1,
+         "theoretical_pairs": 2},
+    ]
     with sqlite3.connect(database) as db:
         preview_row = db.execute(
             "SELECT hasil_json,snapshot_json FROM preview_jadwal WHERE id=?",
@@ -296,6 +311,7 @@ def test_real_generate_save_active_history(app, client, database, monkeypatch):
 
     saved = client.post("/api/v1/jadwal/simpan", json={"preview_id": generated["preview_id"]})
     assert saved.status_code == 201
+    assert "solver_diagnostics" not in saved.get_json()["data"]
     with sqlite3.connect(database) as db:
         persisted_result_after_save = db.execute(
             "SELECT hasil_json FROM preview_jadwal WHERE id=?",

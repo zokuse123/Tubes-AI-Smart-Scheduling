@@ -12,6 +12,7 @@ import pytest
 from backend.app import create_app
 from backend.app.errors import APIError
 import backend.app.scheduling as scheduling
+from backend.app.solver_adapter import SolverExecution
 from backend.db.init_db import init_db
 
 
@@ -28,6 +29,11 @@ UNSAT = {
     "status": "unsatisfiable",
     "assignments": [],
 }
+
+
+def solver_execution(response, candidates):
+    verification = "passed" if response["status"] == "success" else "not_applicable"
+    return SolverExecution(dict(response), candidates, verification)
 
 
 @pytest.fixture()
@@ -63,7 +69,15 @@ def app(database: Path, monkeypatch):
         }
     )
     monkeypatch.setattr(scheduling, "_utc_now", lambda: FIXED_NOW)
-    monkeypatch.setattr(scheduling, "run_solver", lambda _payload, _config: dict(SUCCESS))
+    monkeypatch.setattr(
+        scheduling,
+        "run_solver",
+        lambda _payload, _config: solver_execution(
+            SUCCESS,
+            [{"praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+              "theoretical_pairs": 1}],
+        ),
+    )
     return application
 
 
@@ -87,7 +101,14 @@ def test_valid_empty_object_creates_canonical_preview(client, database):
     assert data["preview_id"] == str(parsed_uuid)
     assert data["preview_status"] == "ready"
     assert data["source_revision"] == 7
-    assert "solver_diagnostics" not in data
+    diagnostics = data["solver_diagnostics"]
+    assert type(diagnostics["wall_time_ms"]) is int
+    assert diagnostics["wall_time_ms"] >= 0
+    assert diagnostics["domain_candidates"] == [{
+            "praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+            "theoretical_pairs": 1,
+    }]
+    assert diagnostics["verification"] == {"overall": "passed"}
     assert data["created_at"] == "2026-10-19T08:30:00.000Z"
     assert data["expires_at"] == "2026-10-19T09:00:00.000Z"
     assert data["summary"] == {"total_praktikum": 1, "total_assignment": 1}
@@ -145,18 +166,30 @@ def test_request_validation(client, kwargs, code, status):
 
 
 def test_unsatisfiable_has_no_side_effects(client, database, monkeypatch):
-    monkeypatch.setattr(scheduling, "run_solver", lambda _payload, _config: dict(UNSAT))
+    monkeypatch.setattr(
+        scheduling,
+        "run_solver",
+        lambda _payload, _config: solver_execution(
+            UNSAT,
+            [{"praktikum_id": 1, "slot_count": 0, "laboratory_count": 1,
+              "theoretical_pairs": 0}],
+        ),
+    )
     before_revision = rows(database, "SELECT value FROM system_metadata WHERE key='source_revision'")[0][0]
     response = client.post("/api/v1/jadwal/generate", json={})
     assert response.status_code == 200
-    assert response.get_json() == {
-        "data": {
-            "status": "unsatisfiable",
-            "source_revision": 7,
-            "message": "Tidak ditemukan jadwal yang memenuhi seluruh aturan.",
-            "assignments": [],
-        }
-    }
+    data = response.get_json()["data"]
+    assert data["status"] == "unsatisfiable"
+    assert data["source_revision"] == 7
+    assert data["assignments"] == []
+    assert data["solver_diagnostics"]["verification"] == {"overall": "not_applicable"}
+    assert type(data["solver_diagnostics"]["wall_time_ms"]) is int
+    assert data["solver_diagnostics"]["wall_time_ms"] >= 0
+    assert data["solver_diagnostics"]["domain_candidates"] == [{
+        "praktikum_id": 1, "slot_count": 0, "laboratory_count": 1,
+        "theoretical_pairs": 0,
+    }]
+    assert data["message"] == "Tidak ditemukan jadwal yang memenuhi seluruh aturan."
     assert rows(database, "SELECT * FROM preview_jadwal") == []
     assert rows(database, "SELECT value FROM system_metadata WHERE key='source_revision'")[0][0] == before_revision
 
@@ -167,7 +200,7 @@ def test_elapsed_milliseconds_rounds_to_nearest_and_never_goes_negative():
     assert scheduling._elapsed_milliseconds(2_000_000, 1_000_000) == 0
 
 
-def test_solver_clock_brackets_only_run_solver_and_does_not_publish_partial_diagnostics(
+def test_solver_clock_brackets_run_solver_and_publishes_complete_diagnostics(
     client, monkeypatch
 ):
     events = []
@@ -180,7 +213,11 @@ def test_solver_clock_brackets_only_run_solver_and_does_not_publish_partial_diag
     def solver(_payload, _config):
         assert events == ["clock"]
         events.append("solver")
-        return dict(SUCCESS)
+        return solver_execution(
+            SUCCESS,
+            [{"praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+              "theoretical_pairs": 1}],
+        )
 
     monkeypatch.setattr(scheduling.time, "monotonic_ns", monotonic_ns)
     monkeypatch.setattr(scheduling, "run_solver", solver)
@@ -188,7 +225,14 @@ def test_solver_clock_brackets_only_run_solver_and_does_not_publish_partial_diag
 
     assert response.status_code == 200
     assert events == ["clock", "solver", "clock"]
-    assert "solver_diagnostics" not in response.get_json()["data"]
+    assert response.get_json()["data"]["solver_diagnostics"] == {
+        "wall_time_ms": 3,
+        "domain_candidates": [{
+            "praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+            "theoretical_pairs": 1,
+        }],
+        "verification": {"overall": "passed"},
+    }
 
 
 def test_solver_error_still_closes_internal_timing_window(client, database, monkeypatch):
@@ -253,6 +297,26 @@ def test_solver_errors_are_preserved_without_preview(client, database, monkeypat
     assert rows(database, "SELECT * FROM preview_jadwal") == []
 
 
+@pytest.mark.skipif(shutil.which("swipl") is None, reason="SWI-Prolog executable unavailable")
+def test_verifier_rejection_returns_error_without_preview(client, database, monkeypatch):
+    from backend.app import solver_adapter
+
+    def reject(_payload, _assignments):
+        raise APIError(
+            "SOLVER_PROTOCOL_ERROR",
+            "Mesin penjadwalan menghasilkan respons tidak valid.",
+            502,
+        )
+
+    monkeypatch.setattr(scheduling, "run_solver", solver_adapter.run_solver)
+    monkeypatch.setattr(solver_adapter, "verify_assignments", reject)
+    response = client.post("/api/v1/jadwal/generate", json={})
+    assert response.status_code == 502
+    assert response.get_json()["error"]["code"] == "SOLVER_PROTOCOL_ERROR"
+    assert "solver_diagnostics" not in response.get_json().get("data", {})
+    assert rows(database, "SELECT * FROM preview_jadwal") == []
+
+
 def test_revision_race_returns_stale_and_preserves_initial_snapshot(client, database, monkeypatch):
     captured = {}
 
@@ -261,7 +325,11 @@ def test_revision_race_returns_stale_and_preserves_initial_snapshot(client, data
         with sqlite3.connect(database) as writer:
             writer.execute("UPDATE mata_praktikum SET nama='Nama Baru' WHERE id=1")
             writer.execute("UPDATE system_metadata SET value=8 WHERE key='source_revision'")
-        return dict(SUCCESS)
+        return solver_execution(
+            SUCCESS,
+            [{"praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+              "theoretical_pairs": 1}],
+        )
 
     monkeypatch.setattr(scheduling, "run_solver", mutate_during_solver)
     response = client.post("/api/v1/jadwal/generate", json={})
@@ -307,7 +375,11 @@ def test_display_uses_initial_source_snapshot_without_post_solver_join(client, d
     def rename_without_revision(_payload, _config):
         with sqlite3.connect(database) as writer:
             writer.execute("UPDATE mata_praktikum SET nama='Nama Yang Tidak Boleh Dipakai' WHERE id=1")
-        return dict(SUCCESS)
+        return solver_execution(
+            SUCCESS,
+            [{"praktikum_id": 1, "slot_count": 1, "laboratory_count": 1,
+              "theoretical_pairs": 1}],
+        )
 
     monkeypatch.setattr(scheduling, "run_solver", rename_without_revision)
     response = client.post("/api/v1/jadwal/generate", json={})
@@ -343,10 +415,24 @@ def test_assignments_are_materialized_in_canonical_praktikum_order(client, datab
             {"praktikum_id": 1, "slot_id": 1, "laboratorium_id": 1},
         ],
     }
-    monkeypatch.setattr(scheduling, "run_solver", lambda *_args: reversed_result)
+    monkeypatch.setattr(
+        scheduling,
+        "run_solver",
+        lambda *_args: solver_execution(
+            reversed_result,
+            [
+                {"praktikum_id": 1, "slot_count": 1, "laboratory_count": 2,
+                 "theoretical_pairs": 2},
+                {"praktikum_id": 2, "slot_count": 1, "laboratory_count": 2,
+                 "theoretical_pairs": 2},
+            ],
+        ),
+    )
     response = client.post("/api/v1/jadwal/generate", json={})
     assert response.status_code == 200
-    assert [item["praktikum_id"] for item in response.get_json()["data"]["assignments"]] == [1, 2]
+    data = response.get_json()["data"]
+    assert [item["praktikum_id"] for item in data["assignments"]] == [1, 2]
+    assert [item["praktikum_id"] for item in data["solver_diagnostics"]["domain_candidates"]] == [1, 2]
     snapshot = json.loads(rows(database, "SELECT snapshot_json FROM preview_jadwal")[0][0])
     assert [item["praktikum_id"] for item in snapshot["assignments"]] == [1, 2]
 
@@ -371,10 +457,25 @@ def test_real_solver_sat_and_unsat(database, monkeypatch):
     client = application.test_client()
     sat = client.post("/api/v1/jadwal/generate", json={})
     assert sat.status_code == 200
-    assert sat.get_json()["data"]["status"] == "success"
+    sat_data = sat.get_json()["data"]
+    assert sat_data["status"] == "success"
+    assert sat_data["solver_diagnostics"]["verification"] == {"overall": "passed"}
+    assert sat_data["solver_diagnostics"]["domain_candidates"] == [
+        {"praktikum_id": 1, "slot_count": 1, "laboratory_count": 1, "theoretical_pairs": 1}
+    ]
+    assert type(sat_data["solver_diagnostics"]["wall_time_ms"]) is int
+    assert sat_data["solver_diagnostics"]["wall_time_ms"] >= 0
     with sqlite3.connect(database) as db:
         db.execute("DELETE FROM ketersediaan_kelompok")
         db.execute("UPDATE system_metadata SET value=8 WHERE key='source_revision'")
     unsat = client.post("/api/v1/jadwal/generate", json={})
     assert unsat.status_code == 200
-    assert unsat.get_json()["data"]["status"] == "unsatisfiable"
+    unsat_data = unsat.get_json()["data"]
+    assert unsat_data["status"] == "unsatisfiable"
+    assert unsat_data["source_revision"] == 8
+    assert unsat_data["solver_diagnostics"]["verification"] == {"overall": "not_applicable"}
+    assert unsat_data["solver_diagnostics"]["domain_candidates"] == [
+        {"praktikum_id": 1, "slot_count": 0, "laboratory_count": 1, "theoretical_pairs": 0}
+    ]
+    assert type(unsat_data["solver_diagnostics"]["wall_time_ms"]) is int
+    assert unsat_data["solver_diagnostics"]["wall_time_ms"] >= 0

@@ -35,9 +35,15 @@ class SolverConfig:
 class SolverExecution(dict[str, Any]):
     """Validated v1 solver result with non-persisted CLI diagnostics attached."""
 
-    def __init__(self, response_v1: dict[str, Any], domain_candidates: list[dict[str, int]]):
+    def __init__(
+        self,
+        response_v1: dict[str, Any],
+        domain_candidates: list[dict[str, int]],
+        verification_overall: str,
+    ):
         super().__init__(response_v1)
         self.domain_candidates = domain_candidates
+        self.verification_overall = verification_overall
 
 
 def _error(code: str, message: str, status: int) -> APIError:
@@ -318,7 +324,10 @@ def validate_solver_cli_response(
     validated_v1 = validate_solver_response(response_v1, exit_code, source_revision)
     if status == "success":
         verify_assignments(payload, validated_v1["assignments"])
-    return SolverExecution(validated_v1, candidates)
+        verification_overall = "passed"
+    else:
+        verification_overall = "not_applicable"
+    return SolverExecution(validated_v1, candidates, verification_overall)
 
 
 def run_solver(payload: dict[str, Any], config: SolverConfig) -> dict[str, Any]:

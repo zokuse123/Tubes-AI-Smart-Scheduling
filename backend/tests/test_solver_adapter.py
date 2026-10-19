@@ -58,10 +58,12 @@ def test_real_solver_success_and_unsatisfiable():
         {"praktikum_id": 1, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
         {"praktikum_id": 2, "slot_count": 2, "laboratory_count": 1, "theoretical_pairs": 2},
     ]
+    assert success.verification_overall == "passed"
     assert unsat == {"schema_version":1,"source_revision":8,"status":"unsatisfiable","assignments":[]}
     assert unsat.domain_candidates == [
         {"praktikum_id": 1, "slot_count": 1, "laboratory_count": 0, "theoretical_pairs": 0}
     ]
+    assert unsat.verification_overall == "not_applicable"
 
 
 def test_cli_v2_domain_diagnostics_are_strictly_validated():

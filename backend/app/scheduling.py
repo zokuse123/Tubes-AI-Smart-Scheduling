@@ -9,7 +9,12 @@ from typing import Any, Mapping
 
 from .errors import APIError
 from .scheduling_dataset import SchedulingDataset, read_scheduling_dataset
-from .solver_adapter import SolverConfig, run_solver, validate_solver_response
+from .solver_adapter import (
+    SolverConfig,
+    SolverExecution,
+    run_solver,
+    validate_solver_response,
+)
 
 
 _GENERATE_READ_ONLY_FIELDS = frozenset(
@@ -60,6 +65,33 @@ def _canonical_json(value: Any) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def _solver_diagnostics(
+    result: dict[str, Any], wall_time_ms: int
+) -> dict[str, Any]:
+    expected_verification = {
+        "success": "passed",
+        "unsatisfiable": "not_applicable",
+    }
+    if (
+        not isinstance(result, SolverExecution)
+        or type(wall_time_ms) is not int
+        or wall_time_ms < 0
+        or not isinstance(result.get("status"), str)
+        or result.get("status") not in expected_verification
+        or result.verification_overall != expected_verification[result["status"]]
+    ):
+        raise APIError(
+            "SOLVER_PROTOCOL_ERROR",
+            "Mesin penjadwalan menghasilkan respons tidak valid.",
+            502,
+        )
+    return {
+        "wall_time_ms": wall_time_ms,
+        "domain_candidates": [dict(item) for item in result.domain_candidates],
+        "verification": {"overall": result.verification_overall},
+    }
 
 
 def _by_id(items: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
@@ -215,15 +247,14 @@ def generate_schedule(
             solver_started_ns, solver_finished_ns
         )
 
-    # DEC-067 requires the complete diagnostics object atomically. Keep this
-    # measurement internal until domain candidates and verifier status exist.
-    del solver_wall_time_ms
+    diagnostics = _solver_diagnostics(solver_result, solver_wall_time_ms)
     if solver_result["status"] == "unsatisfiable":
         return {
             "status": "unsatisfiable",
             "source_revision": dataset.source_revision,
             "message": "Tidak ditemukan jadwal yang memenuhi seluruh aturan.",
             "assignments": [],
+            "solver_diagnostics": diagnostics,
         }
 
     display_assignments, snapshot_assignments = _build_assignments(
@@ -255,6 +286,7 @@ def generate_schedule(
             "total_assignment": len(display_assignments),
         },
         "assignments": display_assignments,
+        "solver_diagnostics": diagnostics,
     }
 
 
