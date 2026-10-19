@@ -8,7 +8,7 @@ from typing import Any, Mapping
 
 from .errors import APIError
 from .scheduling_dataset import SchedulingDataset, read_scheduling_dataset
-from .solver_adapter import SolverConfig, run_solver
+from .solver_adapter import SolverConfig, run_solver, validate_solver_response
 
 
 _GENERATE_READ_ONLY_FIELDS = frozenset(
@@ -236,3 +236,205 @@ def generate_schedule(
         },
         "assignments": display_assignments,
     }
+
+
+def validate_save_payload(payload: dict[str, Any]) -> str:
+    for field in payload:
+        if field != "preview_id":
+            readonly = _GENERATE_READ_ONLY_FIELDS | {
+                "updated_at", "is_active", "saved_at", "generated_at",
+                "invalidated_at", "archived_at", "consumed_at", "terminal_at",
+                "hasil_json", "snapshot_json",
+            }
+            code = "READ_ONLY_FIELD" if field in readonly else "UNKNOWN_FIELD"
+            raise APIError(code, "Field tidak diizinkan.", 400, {"field": field})
+    value = payload.get("preview_id")
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        parsed = uuid.UUID(value)
+        if str(parsed) != value or parsed.variant != uuid.RFC_4122 or parsed.version not in range(1, 9):
+            raise ValueError
+    except ValueError:
+        raise APIError("VALIDATION_ERROR", "preview_id harus UUID canonical yang valid.",
+                       422, {"field": "preview_id"}) from None
+    return value
+
+
+def _strict_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value):
+    raise ValueError("invalid JSON constant")
+
+
+_SOURCE_FIELDS = {
+    "mata_praktikum": {"id", "nama"},
+    "kelompok": {"id", "nama", "jumlah_peserta"},
+    "asisten": {"id", "nama"},
+    "laboratorium": {"id", "nama", "kapasitas"},
+    "slot_waktu": {"id", "hari", "jam_mulai", "jam_selesai"},
+    "praktikum": {"id", "mata_praktikum_id", "kelompok_id", "asisten_id"},
+}
+
+
+def _validate_source(snapshot: dict) -> None:
+    for name, fields in _SOURCE_FIELDS.items():
+        items = snapshot[name]
+        if not isinstance(items, list) or not items:
+            raise ValueError
+        previous = 0
+        for item in items:
+            if not isinstance(item, dict) or set(item) != fields:
+                raise ValueError
+            for field, value in item.items():
+                if field == "nama":
+                    if not isinstance(value, str) or not value.strip():
+                        raise ValueError
+                elif field in ("jam_mulai", "jam_selesai"):
+                    if not isinstance(value, str) or len(value) != 5:
+                        raise ValueError
+                    parsed = dt.datetime.strptime(value, "%H:%M")
+                    if parsed.strftime("%H:%M") != value:
+                        raise ValueError
+                elif type(value) is not int or value <= 0:
+                    raise ValueError
+            if item["id"] <= previous:
+                raise ValueError
+            previous = item["id"]
+            if name == "slot_waktu":
+                start = dt.datetime.strptime(item["jam_mulai"], "%H:%M")
+                end = dt.datetime.strptime(item["jam_selesai"], "%H:%M")
+                if item["hari"] > 5 or end - start != dt.timedelta(minutes=120):
+                    raise ValueError
+    for item in snapshot["praktikum"]:
+        for name in ("mata_praktikum", "kelompok", "asisten"):
+            if item[name + "_id"] not in {row["id"] for row in snapshot[name]}:
+                raise ValueError
+
+
+def _validated_preview(preview: sqlite3.Row) -> tuple[dict, dict, list[dict]]:
+    """Validate persisted representations; never replace labels from live masters.
+
+    Availability is not persisted in the snapshot. The generate verifier and the
+    transaction's revision guard retain that guarantee; this is an integrity
+    check, not a new solver invocation or a fabricated availability projection.
+    """
+    try:
+        result, snapshot = (
+            json.loads(preview[field], object_pairs_hook=_strict_json_object,
+                       parse_constant=_reject_json_constant)
+            for field in ("hasil_json", "snapshot_json")
+        )
+        validate_solver_response(result, 0, preview["source_revision"])
+        if result["status"] != "success":
+            raise ValueError
+        expected = set(_SOURCE_FIELDS) | {
+            "schema_version", "source_revision", "generated_at", "saved_at", "assignments",
+        }
+        if not isinstance(snapshot, dict) or set(snapshot) != expected:
+            raise ValueError
+        if (type(snapshot["schema_version"]) is not int or snapshot["schema_version"] != 1
+                or type(snapshot["source_revision"]) is not int
+                or snapshot["source_revision"] != preview["source_revision"]
+                or snapshot["saved_at"] is not None
+                or snapshot["generated_at"] != preview["created_at"]):
+            raise ValueError
+        created = dt.datetime.strptime(preview["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        expires = dt.datetime.strptime(preview["expires_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        if expires - created != dt.timedelta(minutes=30):
+            raise ValueError
+        _validate_source(snapshot)
+        if [a["praktikum_id"] for a in result["assignments"]] != [p["id"] for p in snapshot["praktikum"]]:
+            raise ValueError
+        dataset = SchedulingDataset({}, snapshot, preview["source_revision"])
+        display, expected_assignments = _build_assignments(dataset, result["assignments"])
+        # JSON comparison distinguishes booleans/floats from strict integers.
+        if _canonical_json(expected_assignments) != _canonical_json(snapshot["assignments"]):
+            raise ValueError
+        return result, snapshot, display
+    except (ValueError, TypeError, KeyError, APIError, RecursionError, OverflowError):
+        raise sqlite3.IntegrityError("persisted preview integrity failure") from None
+
+
+def _preview_error(state: str) -> APIError:
+    code, message = {
+        "missing": ("PREVIEW_NOT_FOUND", "Preview tidak ditemukan."),
+        "consumed": ("PREVIEW_CONSUMED", "Preview sudah pernah disimpan."),
+        "stale": ("STALE_PREVIEW", "Preview tidak lagi sesuai dengan data terkini."),
+        "expired": ("PREVIEW_EXPIRED", "Preview telah kedaluwarsa."),
+    }[state]
+    return APIError(code, message, 404 if state == "missing" else 409)
+
+
+def _transition_preview(db: sqlite3.Connection, preview_id: str, state: str, now: str) -> None:
+    cursor = db.execute(
+        """UPDATE preview_jadwal SET status=?,terminal_at=?,consumed_at=?
+           WHERE id=? AND status='ready'""",
+        (state, now, now if state == "consumed" else None, preview_id),
+    )
+    if cursor.rowcount != 1:
+        raise sqlite3.IntegrityError("preview transition affected unexpected row count")
+
+
+def save_schedule(db: sqlite3.Connection, preview_id: str) -> dict[str, Any]:
+    """Consume a ready preview and create its immutable version atomically."""
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        preview = db.execute("SELECT * FROM preview_jadwal WHERE id=?", (preview_id,)).fetchone()
+        if preview is None:
+            raise _preview_error("missing")
+        if preview["status"] in ("consumed", "stale", "expired"):
+            raise _preview_error(preview["status"])
+        if preview["status"] != "ready":
+            raise sqlite3.IntegrityError("invalid preview state")
+        # Sample time after acquiring the write lock, including any lock wait.
+        now = _timestamp(_utc_now())
+        terminal = None
+        if now >= preview["expires_at"]:
+            terminal = "expired"
+        else:
+            revision = db.execute("SELECT value FROM system_metadata WHERE key='source_revision'").fetchone()
+            if revision is None or type(revision[0]) is not int or revision[0] < 0:
+                raise sqlite3.IntegrityError("source revision seed invalid")
+            if revision[0] != preview["source_revision"]:
+                terminal = "stale"
+        if terminal:
+            _transition_preview(db, preview_id, terminal, now)
+            db.commit()
+            raise _preview_error(terminal)
+
+        result, snapshot, display = _validated_preview(preview)
+        snapshot["saved_at"] = now
+        db.execute("UPDATE versi_jadwal SET status='archived',archived_at=? WHERE status='active'", (now,))
+        cursor = db.execute(
+            """INSERT INTO versi_jadwal(status,source_revision,created_at,snapshot_json)
+               VALUES ('active',?,?,?)""",
+            (preview["source_revision"], now, _canonical_json(snapshot)),
+        )
+        version_id = cursor.lastrowid
+        db.executemany(
+            """INSERT INTO detail_jadwal(versi_id,praktikum_id,slot_id,laboratorium_id)
+               VALUES (?,?,?,?)""",
+            [(version_id, a["praktikum_id"], a["slot_id"], a["laboratorium_id"])
+             for a in result["assignments"]],
+        )
+        _transition_preview(db, preview_id, "consumed", now)
+        response = {
+            "id": version_id, "status": "active", "source_revision": preview["source_revision"],
+            "created_at": now, "invalidated_at": None, "archived_at": None,
+            "summary": {"total_praktikum": len(snapshot["praktikum"]), "total_assignment": len(display)},
+            "assignments": display,
+        }
+        db.commit()
+        return response
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise

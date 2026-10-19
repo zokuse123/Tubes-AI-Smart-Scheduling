@@ -21,7 +21,9 @@ from .mutations import (
     validate_availability_payload,
     validate_status_payload,
 )
-from .scheduling import generate_schedule, validate_generate_payload
+from .scheduling import (
+    generate_schedule, save_schedule, validate_generate_payload, validate_save_payload,
+)
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -215,6 +217,12 @@ def generate_schedule_resource():
     return jsonify({"data": generate_schedule(get_db(), current_app.config)})
 
 
+def save_schedule_resource():
+    payload = parse_json_object(request, operation="save")
+    preview_id = validate_save_payload(payload)
+    return jsonify({"data": save_schedule(get_db(), preview_id)}), 201
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
@@ -234,6 +242,12 @@ def _register_routes() -> None:
         "/jadwal/generate",
         endpoint="generate_schedule",
         view_func=generate_schedule_resource,
+        methods=("POST",),
+    )
+    api.add_url_rule(
+        "/jadwal/simpan",
+        endpoint="save_schedule",
+        view_func=save_schedule_resource,
         methods=("POST",),
     )
 
