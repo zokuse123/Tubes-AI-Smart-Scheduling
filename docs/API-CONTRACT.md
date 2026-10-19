@@ -1,7 +1,7 @@
 # API-CONTRACT.md
 
 **Versi 1.0-final-dokumentasi | 19 Oktober 2026**
-**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-066; status implementasi dicatat terpisah.
+**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-067; observabilitas solver berstatus PLANNED dan status implementasinya dicatat terpisah.
 
 ## 1. Prinsip antarkomponen
 
@@ -371,6 +371,17 @@ Respons protokol yang diharapkan bila boundary CLI masih dapat menangani parse e
 | `invalid_input` | 2 | `error.code`, `error.message`; `error.path` nullable | `assignments` |
 | `internal_error` | 3 | `error.code`, `error.message` | `assignments` |
 
+### 5.7 Kontrak CLI observabilitas terencana
+
+DEC-067 menetapkan protokol output internal solver versi 2 untuk menambahkan ringkasan domain kandidat tanpa melonggarkan validasi strict versi 1 secara diam-diam. Input solver tetap schema versi 1. Output CLI versi 2 mempertahankan status, pasangan exit code, bentuk `assignments`, serta bentuk objek error yang ditetapkan di atas; `schema_version` output bernilai `2`.
+
+- Untuk `success` dan `unsatisfiable`, output CLI versi 2 wajib menambahkan `domain_candidates` sebagai array. Setiap item tepat berisi `praktikum_id`, `slot_count`, `laboratory_count`, dan `theoretical_pairs`, semuanya integer nonnegatif. Urutan item menaik berdasarkan `praktikum_id`; `theoretical_pairs` sama dengan `slot_count * laboratory_count`.
+- Daftar kandidat dihitung dari daftar slot dan laboratorium awal yang benar-benar dipakai untuk membentuk domain kegiatan, sebelum constraint konflik antar-kegiatan. Ini bukan domain setelah propagation, jumlah solusi, atau jumlah langkah pencarian. Item tetap disediakan untuk semua kegiatan input pada SAT maupun UNSAT, termasuk hitungan nol.
+- Respons `invalid_input` dan `internal_error` versi 2 tidak wajib dan tidak boleh mengarang `domain_candidates`; bentuk error selain nomor versi tetap mengikuti bagian 5.3–5.6. Revision yang berhasil dibaca tetap harus di-echo sesuai aturan yang berlaku.
+- CLI tetap menulis tepat satu objek JSON ke stdout, tidak mencampur log, dan mematuhi batas stdout 1 MiB serta stderr 256 KiB. Overflow tetap merupakan error adapter dan tidak membuat preview.
+
+Adapter Flask memvalidasi CLI versi 2 secara strict, termasuk revision, bentuk/tipe diagnostik, urutan, dan konsistensi hasil kali. Untuk pemanggil integrasi internal yang membutuhkan hasil canonical, adapter memproyeksikan status dan assignments tervalidasi ke bentuk solver response versi 1. Proyeksi ini—tanpa diagnostik—tetap menjadi nilai yang disimpan pada `preview_jadwal.hasil_json` menurut DEC-066. Status/exit code tetap: success dan unsatisfiable `0`, invalid input `2`, internal error `3`.
+
 ## 6. Pembagian validasi
 
 ### 6.1 Flask preflight
@@ -536,6 +547,7 @@ Satu transaksi melakukan validasi, deteksi no-op, klasifikasi revision, evaluasi
 ## 12. Startup database dan dependency backend
 
 - Inisialisasi dan migrasi SQLite dijalankan hanya melalui CLI maintenance yang eksplisit. Flask tidak menjalankan migrasi pada startup maupun request. Startup hanya melakukan pemeriksaan read-only terhadap kesiapan database/dependency dan gagal aman bila schema belum siap.
+
 - Baseline dependency adalah Flask 3.1.3 dan Flask-CORS 6.0.5. Rentang yang diizinkan sebelum review berikutnya: `Flask>=3.1.3,<3.2` dan `Flask-CORS>=6.0.5,<6.1`.
 - Metadata rilis resmi masing-masing mensyaratkan Python `>=3.9` dan `>=3.9,<4.0`, sehingga mencakup Python 3.14. Karena classifier eksplisit upstream belum menjadi bukti pengujian Python 3.14, implementasi wajib memverifikasi instalasi/resolusi pada Python 3.14, menjalankan seluruh unit/contract test, smoke test application factory, dan uji preflight CORS. Versi hasil resolusi direkam secara reproducible sebelum rilis.
 - Sumber versi: [Flask di PyPI](https://pypi.org/project/Flask/) dan [Flask-CORS di PyPI](https://pypi.org/project/flask-cors/), diperiksa 19 Oktober 2026. Tahap ini tidak memasang paket atau mengubah manifest dependency.
@@ -691,3 +703,48 @@ Request save untuk contoh 15–18 selalu:
 ```
 
 Perubahan kontrak setelah disetujui harus melalui review Iqbal, Zicco, dan Galang.
+
+## 13. Observabilitas solver (PLANNED, DEC-067)
+
+Fitur pada bagian ini belum diimplementasikan. Endpoint tetap `POST /api/v1/jadwal/generate`; tidak ada endpoint baru. Objek berikut merupakan field aditif pada objek `data` response generate.
+
+### 13.1 Generate success
+
+Response success mempertahankan semua field yang sudah dikunci DEC-051 dan menambahkan:
+
+```json
+{
+  "solver_diagnostics": {
+    "wall_time_ms": 42,
+    "domain_candidates": [
+      {
+        "praktikum_id": 11,
+        "slot_count": 3,
+        "laboratory_count": 2,
+        "theoretical_pairs": 6
+      }
+    ],
+    "verification": {"overall": "passed"}
+  }
+}
+```
+
+`wall_time_ms` adalah integer nonnegatif dalam milidetik, dibulatkan ke milidetik terdekat dari pengukuran monotonic wall-clock yang mengapit pemanggilan Flask `run_solver()`. Metrik mencakup lifecycle subprocess, komunikasi stream, parsing dan validasi response, serta verifier Python; tidak mencakup pembacaan dataset, penyimpanan preview, atau seluruh request HTTP. Metrik bukan CPU time dan dapat berbeda antarpanggilan. Pengukuran tidak mengubah deadline solver 30 detik.
+
+`domain_candidates` dihitung Prolog dari kandidat slot dan lab yang benar-benar dipakai untuk domain awal setiap kegiatan, sebelum constraint konflik antar-kegiatan. Seluruh item dan angka wajib tersedia, berurutan menaik menurut `praktikum_id`; hitungan nol sah. `theoretical_pairs` adalah hasil kali lokal dua hitungan, bukan jumlah solusi ataupun langkah pencarian.
+
+`verification.overall` bernilai `passed` hanya setelah `verify_assignments()` berhasil memverifikasi assignment success terhadap C01–C09. Kontrak ini tidak meminta matriks hasil individual.
+
+### 13.2 Generate unsatisfiable
+
+Response unsatisfiable tetap HTTP 200, tidak membuat preview, dan mempertahankan field lama `status`, `message`, dan `assignments: []`. Secara aditif, response menambahkan `source_revision` dari snapshot dataset yang sama, serta `solver_diagnostics` dengan `wall_time_ms`, `domain_candidates`, dan `verification: {"overall":"not_applicable"}`. Revision harus sama dengan revision input yang di-echo oleh CLI; tidak ada assignment yang diverifikasi pada hasil UNSAT.
+
+### 13.3 Error dan kesiapan data
+
+Error `DATA_NOT_READY`, `SOLVER_TIMEOUT`, `SOLVER_PROTOCOL_ERROR`, `SOLVER_PROCESS_ERROR`, `SOLVER_INTERNAL_ERROR`, `SOLVER_INVALID_INPUT`, `SOLVER_UNAVAILABLE`, `STALE_GENERATION`, dan error lain mempertahankan HTTP status serta error envelope masing-masing. Error tidak memuat `solver_diagnostics`; stderr, traceback, path, konfigurasi, dan detail internal tidak dikirim ke client. `DATA_NOT_READY` terjadi sebelum solver sehingga bukan hasil solver yang memiliki metrik. Timeout/error tidak boleh dibuat tampak seperti success atau UNSAT.
+
+### 13.4 Revisi dan persistensi
+
+Pada success, `solver_diagnostics` terkait dengan `source_revision` response yang telah diverifikasi. Pada UNSAT, field `source_revision` yang ditambahkan adalah revision pembacaan konsisten dataset; perubahan revision yang terjadi selama pencarian tetap tunduk pada aturan generate yang sudah berlaku dan tidak membuat preview.
+
+Diagnostik hanya dikirim pada response generate. Diagnostik tidak disimpan ke `preview_jadwal.hasil_json`, `preview_jadwal.snapshot_json`, `versi_jadwal`, `detail_jadwal`, atau history; ketersediaannya setelah reload tidak dijamin. Persistensi `hasil_json` tetap persis full solver response success versi 1 sebagaimana DEC-066. Tidak diperlukan migrasi SQLite.
