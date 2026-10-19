@@ -438,3 +438,209 @@ def save_schedule(db: sqlite3.Connection, preview_id: str) -> dict[str, Any]:
         if db.in_transaction:
             db.rollback()
         raise
+
+
+def _canonical_timestamp(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError:
+        return False
+    return parsed.strftime("%Y-%m-%dT%H:%M:%S.%f")[:23] + "Z" == value
+
+
+def _validated_version(version: sqlite3.Row, detail_rows: list[sqlite3.Row]) -> tuple[dict, list[dict]]:
+    """Read and cross-check an immutable schedule snapshot against detail indexes."""
+    try:
+        snapshot = json.loads(
+            version["snapshot_json"],
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        expected_fields = set(_SOURCE_FIELDS) | {
+            "schema_version", "source_revision", "generated_at", "saved_at", "assignments",
+        }
+        if not isinstance(snapshot, dict) or set(snapshot) != expected_fields:
+            raise ValueError
+        if (type(snapshot["schema_version"]) is not int or snapshot["schema_version"] != 1
+                or type(snapshot["source_revision"]) is not int
+                or snapshot["source_revision"] != version["source_revision"]
+                or not _canonical_timestamp(snapshot["generated_at"])
+                or not _canonical_timestamp(snapshot["saved_at"])
+                or snapshot["saved_at"] != version["created_at"]
+                or not _canonical_timestamp(version["created_at"])):
+            raise ValueError
+        if version["status"] not in ("active", "invalid", "archived"):
+            raise ValueError
+        invalidated, archived = version["invalidated_at"], version["archived_at"]
+        if version["status"] == "active":
+            if invalidated is not None or archived is not None:
+                raise ValueError
+        elif version["status"] == "invalid":
+            if not _canonical_timestamp(invalidated) or archived is not None:
+                raise ValueError
+        elif not _canonical_timestamp(archived) or invalidated is not None:
+            raise ValueError
+        _validate_source(snapshot)
+        flat = snapshot["assignments"]
+        if not isinstance(flat, list):
+            raise ValueError
+        result_assignments = []
+        for item in flat:
+            if not isinstance(item, dict) or set(item) != {
+                "praktikum_id", "slot_id", "laboratorium_id", "mata_praktikum_nama",
+                "kelompok_nama", "jumlah_peserta", "asisten_nama", "laboratorium_nama",
+                "laboratorium_kapasitas", "hari", "jam_mulai", "jam_selesai",
+            }:
+                raise ValueError
+            for key in ("praktikum_id", "slot_id", "laboratorium_id", "jumlah_peserta",
+                        "laboratorium_kapasitas", "hari"):
+                if type(item[key]) is not int or item[key] <= 0:
+                    raise ValueError
+            for key in ("mata_praktikum_nama", "kelompok_nama", "asisten_nama", "laboratorium_nama"):
+                if not isinstance(item[key], str) or not item[key].strip():
+                    raise ValueError
+            result_assignments.append({
+                "praktikum_id": item["praktikum_id"],
+                "slot_id": item["slot_id"],
+                "laboratorium_id": item["laboratorium_id"],
+            })
+        if [item["praktikum_id"] for item in flat] != sorted(
+            item["id"] for item in snapshot["praktikum"]
+        ):
+            raise ValueError
+        dataset = SchedulingDataset({}, snapshot, version["source_revision"])
+        display, expected_flat = _build_assignments(dataset, result_assignments)
+        if _canonical_json(expected_flat) != _canonical_json(flat):
+            raise ValueError
+        detail_tuples = [(row["praktikum_id"], row["slot_id"], row["laboratorium_id"])
+                         for row in detail_rows]
+        expected_tuples = [(row["praktikum_id"], row["slot_id"], row["laboratorium_id"])
+                           for row in result_assignments]
+        if detail_tuples != expected_tuples:
+            raise ValueError
+        return snapshot, display
+    except (ValueError, TypeError, KeyError, APIError, RecursionError, OverflowError):
+        raise sqlite3.IntegrityError("persisted schedule integrity failure") from None
+
+
+def _schedule_response(version: sqlite3.Row, detail_rows: list[sqlite3.Row]) -> dict[str, Any]:
+    snapshot, assignments = _validated_version(version, detail_rows)
+    count = len(assignments)
+    return {
+        "id": version["id"], "status": version["status"],
+        "source_revision": version["source_revision"], "created_at": version["created_at"],
+        "invalidated_at": version["invalidated_at"], "archived_at": version["archived_at"],
+        "summary": {"total_praktikum": count, "total_assignment": count},
+        "assignments": assignments,
+    }
+
+
+def _version_details(db: sqlite3.Connection, version_id: int) -> list[sqlite3.Row]:
+    return db.execute(
+        """SELECT praktikum_id,slot_id,laboratorium_id FROM detail_jadwal
+           WHERE versi_id=? ORDER BY praktikum_id""",
+        (version_id,),
+    ).fetchall()
+
+
+def read_active_schedule(db: sqlite3.Connection) -> dict[str, Any] | None:
+    try:
+        db.execute("BEGIN")
+        version = db.execute(
+            """SELECT id,status,source_revision,created_at,invalidated_at,archived_at,snapshot_json
+               FROM versi_jadwal WHERE status='active'"""
+        ).fetchone()
+        if version is None:
+            db.commit()
+            return None
+        response = _schedule_response(version, _version_details(db, version["id"]))
+        db.commit()
+        return response
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise
+
+
+def _read_version(db: sqlite3.Connection, version_id: int) -> dict[str, Any]:
+    try:
+        db.execute("BEGIN")
+        version = db.execute(
+            """SELECT id,status,source_revision,created_at,invalidated_at,archived_at,snapshot_json
+               FROM versi_jadwal WHERE id=?""",
+            (version_id,),
+        ).fetchone()
+        if version is None:
+            db.commit()
+            raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+        response = _schedule_response(version, _version_details(db, version_id))
+        response["snapshot"] = {
+            "schema_version": 1,
+            "source_revision": version["source_revision"],
+            "generated_at": json.loads(version["snapshot_json"])["generated_at"],
+            "saved_at": json.loads(version["snapshot_json"])["saved_at"],
+        }
+        db.commit()
+        return response
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise
+
+
+def read_schedule_history(
+    db: sqlite3.Connection,
+    *,
+    page: int,
+    page_size: int,
+    sort_by: str,
+    sort_order: str,
+    status: str,
+) -> dict[str, Any]:
+    direction = sort_order.upper()
+    where = "" if status == "all" else " WHERE status=?"
+    params: tuple[Any, ...] = () if status == "all" else (status,)
+    order = f"created_at {direction},id {direction}" if sort_by == "created_at" else f"id {direction}"
+    try:
+        db.execute("BEGIN")
+        total = db.execute(f"SELECT COUNT(*) FROM versi_jadwal{where}", params).fetchone()[0]
+        versions = db.execute(
+            f"""SELECT id,status,source_revision,created_at,invalidated_at,archived_at,snapshot_json
+                FROM versi_jadwal{where} ORDER BY {order} LIMIT ? OFFSET ?""",
+            (*params, page_size, (page - 1) * page_size),
+        ).fetchall()
+        details_by_version: dict[int, list[sqlite3.Row]] = {v["id"]: [] for v in versions}
+        if versions:
+            ids = tuple(details_by_version)
+            placeholders = ",".join("?" for _ in ids)
+            detail_rows = db.execute(
+                f"""SELECT versi_id,praktikum_id,slot_id,laboratorium_id FROM detail_jadwal
+                    WHERE versi_id IN ({placeholders}) ORDER BY versi_id,praktikum_id""",
+                ids,
+            ).fetchall()
+            for row in detail_rows:
+                details_by_version[row["versi_id"]].append(row)
+        items = []
+        for version in versions:
+            snapshot, _ = _validated_version(version, details_by_version[version["id"]])
+            count = len(snapshot["assignments"])
+            items.append({
+                "id": version["id"], "status": version["status"],
+                "source_revision": version["source_revision"], "created_at": version["created_at"],
+                "invalidated_at": version["invalidated_at"], "archived_at": version["archived_at"],
+                "summary": {"total_praktikum": count, "total_assignment": count},
+            })
+        db.commit()
+        return {
+            "data": items,
+            "meta": {
+                "page": page, "page_size": page_size, "total_items": total,
+                "total_pages": (total + page_size - 1) // page_size,
+            },
+        }
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise

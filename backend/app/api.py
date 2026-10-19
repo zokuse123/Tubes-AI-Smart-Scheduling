@@ -22,7 +22,8 @@ from .mutations import (
     validate_status_payload,
 )
 from .scheduling import (
-    generate_schedule, save_schedule, validate_generate_payload, validate_save_payload,
+    generate_schedule, read_active_schedule, read_schedule_history, _read_version,
+    save_schedule, validate_generate_payload, validate_save_payload,
 )
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -223,6 +224,60 @@ def save_schedule_resource():
     return jsonify({"data": save_schedule(get_db(), preview_id)}), 201
 
 
+def _history_query() -> tuple[int, int, str, str, str]:
+    allowed = {"page", "page_size", "sort_by", "sort_order", "status"}
+    unknown = set(request.args) - allowed
+    if unknown:
+        raise APIError("INVALID_QUERY", "Query parameter tidak dikenal.", 400,
+                       {"field": sorted(unknown)[0]})
+    for field in request.args:
+        if len(request.args.getlist(field)) != 1:
+            raise APIError("INVALID_QUERY", "Query parameter tidak boleh berulang.", 400,
+                           {"field": field})
+    values = {}
+    for name, default in (("page", 1), ("page_size", 20)):
+        raw = request.args.get(name)
+        if raw is None:
+            values[name] = default
+        elif not raw.isascii() or not raw.isdecimal() or int(raw) < 1:
+            raise APIError("INVALID_QUERY", f"{name} harus integer positif.", 400,
+                           {"field": name})
+        else:
+            values[name] = int(raw)
+    if values["page_size"] > 100:
+        raise APIError("INVALID_QUERY", "page_size maksimum 100.", 400,
+                       {"field": "page_size"})
+    sort_by = request.args.get("sort_by", "created_at")
+    if sort_by not in ("created_at", "id"):
+        raise APIError("INVALID_QUERY", "sort_by tidak diizinkan.", 400,
+                       {"field": "sort_by"})
+    sort_order = request.args.get("sort_order", "desc")
+    if sort_order not in ("asc", "desc"):
+        raise APIError("INVALID_QUERY", "sort_order harus asc atau desc.", 400,
+                       {"field": "sort_order"})
+    status = request.args.get("status", "all")
+    if status not in ("active", "invalid", "archived", "all"):
+        raise APIError("INVALID_QUERY", "status tidak diizinkan.", 400,
+                       {"field": "status"})
+    return values["page"], values["page_size"], sort_by, sort_order, status
+
+
+def active_schedule_resource():
+    return jsonify({"data": read_active_schedule(get_db())})
+
+
+def schedule_history_resource():
+    query = _history_query()
+    return jsonify(read_schedule_history(get_db(), page=query[0], page_size=query[1],
+                                         sort_by=query[2], sort_order=query[3], status=query[4]))
+
+
+def schedule_history_detail_resource(version_id: int):
+    if version_id <= 0:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    return jsonify({"data": _read_version(get_db(), version_id)})
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
@@ -250,6 +305,12 @@ def _register_routes() -> None:
         view_func=save_schedule_resource,
         methods=("POST",),
     )
+    api.add_url_rule("/jadwal/aktif", endpoint="active_schedule",
+                     view_func=active_schedule_resource, methods=("GET",))
+    api.add_url_rule("/jadwal/riwayat", endpoint="schedule_history",
+                     view_func=schedule_history_resource, methods=("GET",))
+    api.add_url_rule("/jadwal/riwayat/<int:version_id>", endpoint="schedule_history_detail",
+                     view_func=schedule_history_detail_resource, methods=("GET",))
 
 
 _register_routes()

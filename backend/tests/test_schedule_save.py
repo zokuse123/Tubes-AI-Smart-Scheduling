@@ -386,9 +386,11 @@ def test_saved_history_keeps_labels_after_master_mutations(client, preview, data
 def test_route_inventory(app):
     actual = {(r.rule, m) for r in app.url_map.iter_rules()
               for m in r.methods - {"HEAD", "OPTIONS"} if r.rule.startswith("/api/v1")}
-    assert len(actual) == 36
+    assert len(actual) == 39
     assert {(p, m) for p, m in actual if "/jadwal/" in p} == {
         (SAVE, "POST"), ("/api/v1/jadwal/generate", "POST"),
+        ("/api/v1/jadwal/aktif", "GET"), ("/api/v1/jadwal/riwayat", "GET"),
+        ("/api/v1/jadwal/riwayat/<int:version_id>", "GET"),
     }
 
 
