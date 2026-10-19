@@ -1,6 +1,7 @@
 """Mutation engine transaksional untuk empat master resource TASK 10C."""
 
 import datetime as dt
+import re
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +22,12 @@ SPECS = {
     "kelompok": MutationSpec("kelompok", frozenset(("nama", "jumlah_peserta")), frozenset(("jumlah_peserta",)), True),
     "asisten": MutationSpec("asisten", frozenset(("nama",))),
     "laboratorium": MutationSpec("laboratorium", frozenset(("nama", "kapasitas")), frozenset(("kapasitas",)), True),
+    "slot_waktu": MutationSpec("slot_waktu", frozenset(("hari", "jam_mulai", "jam_selesai")), frozenset(("hari",))),
+    "praktikum": MutationSpec(
+        "praktikum",
+        frozenset(("mata_praktikum_id", "kelompok_id", "asisten_id")),
+        frozenset(("mata_praktikum_id", "kelompok_id", "asisten_id")),
+    ),
 }
 
 READ_ONLY_FIELDS = frozenset(("id", "is_active", "created_at", "updated_at", "source_revision"))
@@ -69,8 +76,41 @@ def validate_payload(spec: MutationSpec, payload: dict[str, Any], *, partial: bo
         elif field in spec.positive_integer_fields:
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise _validation(field, f"{field} harus integer positif.")
+        elif spec.table == "slot_waktu" and field in ("jam_mulai", "jam_selesai"):
+            if not isinstance(value, str):
+                raise _validation(field, f"{field} harus string HH:MM.")
         cleaned[field] = value
     return cleaned
+
+
+def _validate_slot_state(values: dict[str, Any]) -> None:
+    hari = values["hari"]
+    if isinstance(hari, bool) or not isinstance(hari, int) or not 1 <= hari <= 5:
+        raise _validation("hari", "hari harus integer 1 sampai 5.")
+    pattern = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    for field in ("jam_mulai", "jam_selesai"):
+        if not isinstance(values[field], str) or pattern.fullmatch(values[field]) is None:
+            raise _validation(field, f"{field} harus memakai format HH:MM yang valid.")
+    start_hour, start_minute = map(int, values["jam_mulai"].split(":"))
+    end_hour, end_minute = map(int, values["jam_selesai"].split(":"))
+    if end_hour * 60 + end_minute - (start_hour * 60 + start_minute) != 120:
+        raise APIError("VALIDATION_ERROR", "Durasi slot harus tepat 120 menit.", 422, {"field": "jam_selesai"})
+
+
+def _validate_praktikum_references(db: sqlite3.Connection, values: dict[str, Any]) -> None:
+    references = {
+        "mata_praktikum_id": "mata_praktikum",
+        "kelompok_id": "kelompok",
+        "asisten_id": "asisten",
+    }
+    for field, table in references.items():
+        if field not in values:
+            continue
+        row = db.execute(f"SELECT is_active FROM {table} WHERE id=?", (values[field],)).fetchone()
+        if row is None:
+            raise APIError("INVALID_REFERENCE", "Referensi tidak ditemukan.", 422, {"field": field})
+        if not row["is_active"]:
+            raise APIError("INACTIVE_REFERENCE", "Referensi harus aktif.", 409, {"field": field})
 
 
 def validate_status_payload(payload: dict[str, Any]) -> bool:
@@ -117,6 +157,10 @@ def _invalidate_active(db: sqlite3.Connection, timestamp: str) -> None:
     )
 
 
+def _has_active_schedule(db: sqlite3.Connection) -> bool:
+    return db.execute("SELECT 1 FROM versi_jadwal WHERE status='active' LIMIT 1").fetchone() is not None
+
+
 def _active_schedule_would_break(
     db: sqlite3.Connection,
     spec: MutationSpec,
@@ -133,6 +177,10 @@ def _active_schedule_would_break(
     if deactivating:
         if spec.table == "laboratorium":
             sql = "SELECT 1 FROM detail_jadwal WHERE versi_id=? AND laboratorium_id=? LIMIT 1"
+        elif spec.table == "slot_waktu":
+            sql = "SELECT 1 FROM detail_jadwal WHERE versi_id=? AND slot_id=? LIMIT 1"
+        elif spec.table == "praktikum":
+            sql = "SELECT 1 FROM detail_jadwal WHERE versi_id=? AND praktikum_id=? LIMIT 1"
         else:
             relation = {"mata_praktikum": "mata_praktikum_id", "kelompok": "kelompok_id", "asisten": "asisten_id"}[spec.table]
             sql = f"""SELECT 1 FROM detail_jadwal d
@@ -156,6 +204,16 @@ def _active_schedule_would_break(
                WHERE d.versi_id=? AND d.laboratorium_id=? AND k.jumlah_peserta > ? LIMIT 1""",
             (version_id, entity_id, changes["kapasitas"]),
         ).fetchone() is not None
+    if spec.table == "slot_waktu" and set(changes) & {"hari", "jam_mulai", "jam_selesai"}:
+        return db.execute(
+            "SELECT 1 FROM detail_jadwal WHERE versi_id=? AND slot_id=? LIMIT 1",
+            (version_id, entity_id),
+        ).fetchone() is not None
+    if spec.table == "praktikum" and set(changes) & {"mata_praktikum_id", "kelompok_id", "asisten_id"}:
+        return db.execute(
+            "SELECT 1 FROM detail_jadwal WHERE versi_id=? AND praktikum_id=? LIMIT 1",
+            (version_id, entity_id),
+        ).fetchone() is not None
     return False
 
 
@@ -175,6 +233,10 @@ def _translate_integrity(error: sqlite3.IntegrityError, spec: MutationSpec) -> A
 
 def create_master(db: sqlite3.Connection, spec: MutationSpec, values: dict[str, Any]) -> sqlite3.Row:
     def operation():
+        if spec.table == "slot_waktu":
+            _validate_slot_state(values)
+        elif spec.table == "praktikum":
+            _validate_praktikum_references(db, values)
         timestamp = utc_timestamp()
         fields = tuple(values)
         placeholders = ",".join("?" for _ in fields)
@@ -186,6 +248,8 @@ def create_master(db: sqlite3.Connection, spec: MutationSpec, values: dict[str, 
         except sqlite3.IntegrityError as error:
             raise _translate_integrity(error, spec) from None
         _increment_revision(db)
+        if spec.table == "praktikum" and _has_active_schedule(db):
+            _invalidate_active(db, timestamp)
         return _fetch(db, spec, cursor.lastrowid)
 
     return _transaction(db, operation)
@@ -197,6 +261,12 @@ def update_master(db: sqlite3.Connection, spec: MutationSpec, entity_id: int, va
         changes = {field: value for field, value in values.items() if current[field] != value}
         if not changes:
             return current
+        if spec.table == "slot_waktu":
+            merged = {field: current[field] for field in spec.writable}
+            merged.update(changes)
+            _validate_slot_state(merged)
+        elif spec.table == "praktikum":
+            _validate_praktikum_references(db, changes)
         timestamp = utc_timestamp(current["updated_at"])
         assignments = ",".join(f"{field}=?" for field in changes)
         try:
@@ -226,10 +296,15 @@ def set_master_status(db: sqlite3.Connection, spec: MutationSpec, entity_id: int
         invalidates = bool(current["is_active"]) and _active_schedule_would_break(
             db, spec, entity_id, {}, deactivating=True
         )
-        db.execute(
-            f"UPDATE {spec.table} SET is_active=?,updated_at=? WHERE id=?",
-            (target, timestamp, entity_id),
-        )
+        if not current["is_active"] and spec.table == "praktikum" and target:
+            invalidates = _has_active_schedule(db)
+        try:
+            db.execute(
+                f"UPDATE {spec.table} SET is_active=?,updated_at=? WHERE id=?",
+                (target, timestamp, entity_id),
+            )
+        except sqlite3.IntegrityError as error:
+            raise _translate_integrity(error, spec) from None
         _increment_revision(db)
         if invalidates:
             _invalidate_active(db, timestamp)

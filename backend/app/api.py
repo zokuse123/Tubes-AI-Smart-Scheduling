@@ -156,12 +156,19 @@ def detail_resource(resource: Resource, resource_id: int):
     return jsonify({"data": _serialize(resource, row)})
 
 
+def _response_row(resource: Resource, resource_id: int) -> sqlite3.Row:
+    row = get_db().execute(f"{_select_sql(resource)} WHERE p.id = ?", (resource_id,)).fetchone()
+    if row is None:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    return row
+
+
 def create_resource(resource: Resource):
     spec = SPECS[resource.table]
     payload = parse_json_object(request, operation="create")
     values = validate_payload(spec, payload, partial=False)
     row = create_master(get_db(), spec, values)
-    return jsonify({"data": _serialize(resource, row)}), 201
+    return jsonify({"data": _serialize(resource, _response_row(resource, row["id"]))}), 201
 
 
 def update_resource(resource: Resource, resource_id: int):
@@ -171,7 +178,7 @@ def update_resource(resource: Resource, resource_id: int):
     payload = parse_json_object(request, operation="update")
     values = validate_payload(spec, payload, partial=True)
     row = update_master(get_db(), spec, resource_id, values)
-    return jsonify({"data": _serialize(resource, row)})
+    return jsonify({"data": _serialize(resource, _response_row(resource, row["id"]))})
 
 
 def update_resource_status(resource: Resource, resource_id: int):
@@ -181,7 +188,7 @@ def update_resource_status(resource: Resource, resource_id: int):
     payload = parse_json_object(request, operation="status")
     is_active = validate_status_payload(payload)
     row = set_master_status(get_db(), spec, resource_id, is_active)
-    return jsonify({"data": _serialize(resource, row)})
+    return jsonify({"data": _serialize(resource, _response_row(resource, row["id"]))})
 
 
 def _register_routes() -> None:
