@@ -17,6 +17,13 @@ class MutationSpec:
     unique_name: bool = False
 
 
+@dataclass(frozen=True)
+class AvailabilitySpec:
+    owner_table: str
+    link_table: str
+    owner_column: str
+
+
 SPECS = {
     "mata_praktikum": MutationSpec("mata_praktikum", frozenset(("nama",)), unique_name=True),
     "kelompok": MutationSpec("kelompok", frozenset(("nama", "jumlah_peserta")), frozenset(("jumlah_peserta",)), True),
@@ -28,6 +35,11 @@ SPECS = {
         frozenset(("mata_praktikum_id", "kelompok_id", "asisten_id")),
         frozenset(("mata_praktikum_id", "kelompok_id", "asisten_id")),
     ),
+}
+
+AVAILABILITY_SPECS = {
+    "kelompok": AvailabilitySpec("kelompok", "ketersediaan_kelompok", "kelompok_id"),
+    "asisten": AvailabilitySpec("asisten", "ketersediaan_asisten", "asisten_id"),
 }
 
 READ_ONLY_FIELDS = frozenset(("id", "is_active", "created_at", "updated_at", "source_revision"))
@@ -118,6 +130,18 @@ def validate_status_payload(payload: dict[str, Any]) -> bool:
     if set(payload) != {"is_active"} or not isinstance(payload["is_active"], bool):
         raise _validation("is_active", "Body harus tepat memuat boolean is_active.")
     return payload["is_active"]
+
+
+def validate_availability_payload(payload: dict[str, Any]) -> list[int]:
+    _validate_fields(payload, frozenset(("slot_ids",)))
+    if set(payload) != {"slot_ids"} or not isinstance(payload["slot_ids"], list):
+        raise _validation("slot_ids", "Body harus tepat memuat array slot_ids.")
+    slot_ids = payload["slot_ids"]
+    if any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in slot_ids):
+        raise _validation("slot_ids", "Setiap slot_id harus integer positif.")
+    if len(slot_ids) != len(set(slot_ids)):
+        raise _validation("slot_ids", "slot_ids tidak boleh memuat duplikat.")
+    return sorted(slot_ids)
 
 
 def _validate_fields(payload: dict[str, Any], writable: frozenset[str]) -> None:
@@ -309,5 +333,66 @@ def set_master_status(db: sqlite3.Connection, spec: MutationSpec, entity_id: int
         if invalidates:
             _invalidate_active(db, timestamp)
         return _fetch(db, spec, entity_id)
+
+    return _transaction(db, operation)
+
+
+def fetch_availability(db: sqlite3.Connection, spec: AvailabilitySpec, owner_id: int) -> list[int]:
+    owner = db.execute(f"SELECT 1 FROM {spec.owner_table} WHERE id=?", (owner_id,)).fetchone()
+    if owner is None:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    rows = db.execute(
+        f"SELECT slot_id FROM {spec.link_table} WHERE {spec.owner_column}=? ORDER BY slot_id",
+        (owner_id,),
+    ).fetchall()
+    return [row["slot_id"] for row in rows]
+
+
+def replace_availability(
+    db: sqlite3.Connection,
+    spec: AvailabilitySpec,
+    owner_id: int,
+    slot_ids: list[int],
+) -> list[int]:
+    def operation():
+        owner = db.execute(f"SELECT is_active FROM {spec.owner_table} WHERE id=?", (owner_id,)).fetchone()
+        if owner is None:
+            raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+
+        for slot_id in slot_ids:
+            slot = db.execute("SELECT is_active FROM slot_waktu WHERE id=?", (slot_id,)).fetchone()
+            if slot is None:
+                raise APIError("INVALID_REFERENCE", "Referensi slot tidak ditemukan.", 422, {"field": "slot_ids"})
+            if not slot["is_active"]:
+                raise APIError("INACTIVE_REFERENCE", "Referensi slot harus aktif.", 409, {"field": "slot_ids"})
+
+        current = fetch_availability(db, spec, owner_id)
+        if current == slot_ids:
+            return current
+
+        removed = sorted(set(current) - set(slot_ids))
+        invalidates = False
+        if owner["is_active"] and removed:
+            placeholders = ",".join("?" for _ in removed)
+            relation = "kelompok_id" if spec.owner_table == "kelompok" else "asisten_id"
+            invalidates = db.execute(
+                f"""SELECT 1 FROM versi_jadwal v
+                      JOIN detail_jadwal d ON d.versi_id=v.id
+                      JOIN praktikum p ON p.id=d.praktikum_id
+                      WHERE v.status='active' AND p.{relation}=?
+                        AND d.slot_id IN ({placeholders}) LIMIT 1""",
+                (owner_id, *removed),
+            ).fetchone() is not None
+
+        db.execute(f"DELETE FROM {spec.link_table} WHERE {spec.owner_column}=?", (owner_id,))
+        db.executemany(
+            f"INSERT INTO {spec.link_table} ({spec.owner_column},slot_id) VALUES (?,?)",
+            ((owner_id, slot_id) for slot_id in slot_ids),
+        )
+        if owner["is_active"]:
+            _increment_revision(db)
+            if invalidates:
+                _invalidate_active(db, utc_timestamp())
+        return slot_ids
 
     return _transaction(db, operation)

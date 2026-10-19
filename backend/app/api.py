@@ -9,12 +9,16 @@ from flask import Blueprint, jsonify, request
 from .db import get_db
 from .errors import APIError
 from .mutations import (
+    AVAILABILITY_SPECS,
     SPECS,
     create_master,
+    fetch_availability,
     parse_json_object,
+    replace_availability,
     set_master_status,
     update_master,
     validate_payload,
+    validate_availability_payload,
     validate_status_payload,
 )
 
@@ -191,6 +195,19 @@ def update_resource_status(resource: Resource, resource_id: int):
     return jsonify({"data": _serialize(resource, _response_row(resource, row["id"]))})
 
 
+def availability_resource(owner_type: str, owner_id: int):
+    if owner_id < 1:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    spec = AVAILABILITY_SPECS[owner_type]
+    if request.method == "GET":
+        slot_ids = fetch_availability(get_db(), spec, owner_id)
+    else:
+        payload = parse_json_object(request, operation="availability")
+        slot_ids = validate_availability_payload(payload)
+        slot_ids = replace_availability(get_db(), spec, owner_id, slot_ids)
+    return jsonify({"data": {"owner_type": owner_type, "owner_id": owner_id, "slot_ids": slot_ids}})
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
@@ -199,6 +216,13 @@ def _register_routes() -> None:
             api.add_url_rule(f"/{resource.path}", endpoint=f"create_{resource.table}", view_func=lambda resource=resource: create_resource(resource), methods=("POST",))
             api.add_url_rule(f"/{resource.path}/<int:resource_id>", endpoint=f"update_{resource.table}", view_func=lambda resource_id, resource=resource: update_resource(resource, resource_id), methods=("PATCH",))
             api.add_url_rule(f"/{resource.path}/<int:resource_id>/status", endpoint=f"status_{resource.table}", view_func=lambda resource_id, resource=resource: update_resource_status(resource, resource_id), methods=("PATCH",))
+    for owner_type in AVAILABILITY_SPECS:
+        api.add_url_rule(
+            f"/{owner_type}/<int:owner_id>/ketersediaan",
+            endpoint=f"availability_{owner_type}",
+            view_func=lambda owner_id, owner_type=owner_type: availability_resource(owner_type, owner_id),
+            methods=("GET", "PUT"),
+        )
 
 
 _register_routes()
