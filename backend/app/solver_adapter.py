@@ -48,6 +48,16 @@ def _resolve_executable(value: str) -> str:
     return str(Path(resolved).resolve())
 
 
+def solver_available(config: Mapping[str, Any]) -> bool:
+    """Check configured SWI-Prolog executable and CLI file without launching it."""
+    try:
+        _resolve_executable(str(config["SWIPL_EXECUTABLE"]))
+        cli_path = Path(config["SOLVER_CLI_PATH"]).resolve()
+        return cli_path.is_absolute() and cli_path.is_file()
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
 def _stop_process(process: subprocess.Popen) -> bool:
     if process.poll() is None:
         try:

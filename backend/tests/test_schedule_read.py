@@ -11,6 +11,7 @@ import pytest
 
 from backend.app import scheduling
 from backend.tests.test_schedule_save import app, client, database, preview, generate, save, state
+from backend.tests.route_inventory import EXPECTED_API_OPERATIONS
 
 
 ACTIVE = "/api/v1/jadwal/aktif"
@@ -248,13 +249,14 @@ def test_snapshot_and_details_read_from_same_sqlite_transaction(app, client, pre
 
 
 def test_read_route_inventory(app):
-    actual = {(r.rule, method) for r in app.url_map.iter_rules()
+    actual = {(method, r.rule) for r in app.url_map.iter_rules()
               for method in r.methods - {"HEAD", "OPTIONS"} if r.rule.startswith("/api/v1")}
-    assert len(actual) == 39
-    assert {(path, method) for path, method in actual if "/jadwal/" in path} == {
-        ("/api/v1/jadwal/generate", "POST"), ("/api/v1/jadwal/simpan", "POST"),
-        (ACTIVE, "GET"), (HISTORY, "GET"), (f"{HISTORY}/<int:version_id>", "GET"),
+    assert actual == EXPECTED_API_OPERATIONS
+    assert {(method, path) for method, path in actual if "/jadwal/" in path} == {
+        ("POST", "/api/v1/jadwal/generate"), ("POST", "/api/v1/jadwal/simpan"),
+        ("GET", ACTIVE), ("GET", HISTORY), ("GET", f"{HISTORY}/<int:version_id>"),
     }
+    assert ("GET", "/api/v1/health") in actual
 
 
 @pytest.mark.skipif(shutil.which("swipl") is None, reason="SWI-Prolog unavailable")

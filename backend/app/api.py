@@ -2,6 +2,7 @@
 
 import math
 import sqlite3
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from flask import Blueprint, current_app, jsonify, request
@@ -25,6 +26,7 @@ from .scheduling import (
     generate_schedule, read_active_schedule, read_schedule_history, _read_version,
     save_schedule, validate_generate_payload, validate_save_payload,
 )
+from .solver_adapter import solver_available
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -278,6 +280,28 @@ def schedule_history_detail_resource(version_id: int):
     return jsonify({"data": _read_version(get_db(), version_id)})
 
 
+def health_resource():
+    components = {"backend": "available", "database": "unavailable", "solver": "unavailable"}
+    try:
+        get_db().execute("SELECT 1").fetchone()
+        components["database"] = "available"
+    except sqlite3.Error:
+        pass
+
+    if solver_available(current_app.config):
+        components["solver"] = "available"
+
+    healthy = all(value == "available" for value in components.values())
+    checked_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return jsonify({
+        "data": {
+            "status": "healthy" if healthy else "degraded",
+            "components": components,
+            "checked_at": checked_at,
+        }
+    }), 200 if healthy else 503
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
@@ -311,6 +335,7 @@ def _register_routes() -> None:
                      view_func=schedule_history_resource, methods=("GET",))
     api.add_url_rule("/jadwal/riwayat/<int:version_id>", endpoint="schedule_history_detail",
                      view_func=schedule_history_detail_resource, methods=("GET",))
+    api.add_url_rule("/health", endpoint="health", view_func=health_resource, methods=("GET",))
 
 
 _register_routes()

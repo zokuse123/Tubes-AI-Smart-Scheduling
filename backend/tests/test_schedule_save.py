@@ -17,6 +17,7 @@ from backend.app import scheduling
 from backend.app import mutations
 from backend.app.db import get_db
 from backend.tests.test_schedule_generate import database, rows, FIXED_NOW
+from backend.tests.route_inventory import EXPECTED_API_OPERATIONS
 
 
 SAVE = "/api/v1/jadwal/simpan"
@@ -384,14 +385,15 @@ def test_saved_history_keeps_labels_after_master_mutations(client, preview, data
 
 
 def test_route_inventory(app):
-    actual = {(r.rule, m) for r in app.url_map.iter_rules()
+    actual = {(m, r.rule) for r in app.url_map.iter_rules()
               for m in r.methods - {"HEAD", "OPTIONS"} if r.rule.startswith("/api/v1")}
-    assert len(actual) == 39
-    assert {(p, m) for p, m in actual if "/jadwal/" in p} == {
-        (SAVE, "POST"), ("/api/v1/jadwal/generate", "POST"),
-        ("/api/v1/jadwal/aktif", "GET"), ("/api/v1/jadwal/riwayat", "GET"),
-        ("/api/v1/jadwal/riwayat/<int:version_id>", "GET"),
+    assert actual == EXPECTED_API_OPERATIONS
+    assert {(method, path) for method, path in actual if "/jadwal/" in path} == {
+        ("POST", SAVE), ("POST", "/api/v1/jadwal/generate"),
+        ("GET", "/api/v1/jadwal/aktif"), ("GET", "/api/v1/jadwal/riwayat"),
+        ("GET", "/api/v1/jadwal/riwayat/<int:version_id>"),
     }
+    assert ("GET", "/api/v1/health") in actual
 
 
 def test_one_transaction_and_no_master_reads(app, preview, database):
