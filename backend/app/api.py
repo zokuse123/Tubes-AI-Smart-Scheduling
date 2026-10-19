@@ -4,7 +4,7 @@ import math
 import sqlite3
 from dataclasses import dataclass
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from .db import get_db
 from .errors import APIError
@@ -21,6 +21,7 @@ from .mutations import (
     validate_availability_payload,
     validate_status_payload,
 )
+from .scheduling import generate_schedule, validate_generate_payload
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -208,6 +209,12 @@ def availability_resource(owner_type: str, owner_id: int):
     return jsonify({"data": {"owner_type": owner_type, "owner_id": owner_id, "slot_ids": slot_ids}})
 
 
+def generate_schedule_resource():
+    payload = parse_json_object(request, operation="generate")
+    validate_generate_payload(payload)
+    return jsonify({"data": generate_schedule(get_db(), current_app.config)})
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
@@ -223,6 +230,12 @@ def _register_routes() -> None:
             view_func=lambda owner_id, owner_type=owner_type: availability_resource(owner_type, owner_id),
             methods=("GET", "PUT"),
         )
+    api.add_url_rule(
+        "/jadwal/generate",
+        endpoint="generate_schedule",
+        view_func=generate_schedule_resource,
+        methods=("POST",),
+    )
 
 
 _register_routes()
