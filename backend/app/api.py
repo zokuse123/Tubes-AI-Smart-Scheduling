@@ -8,6 +8,15 @@ from flask import Blueprint, jsonify, request
 
 from .db import get_db
 from .errors import APIError
+from .mutations import (
+    SPECS,
+    create_master,
+    parse_json_object,
+    set_master_status,
+    update_master,
+    validate_payload,
+    validate_status_payload,
+)
 
 api = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -147,10 +156,42 @@ def detail_resource(resource: Resource, resource_id: int):
     return jsonify({"data": _serialize(resource, row)})
 
 
+def create_resource(resource: Resource):
+    spec = SPECS[resource.table]
+    payload = parse_json_object(request, operation="create")
+    values = validate_payload(spec, payload, partial=False)
+    row = create_master(get_db(), spec, values)
+    return jsonify({"data": _serialize(resource, row)}), 201
+
+
+def update_resource(resource: Resource, resource_id: int):
+    if resource_id < 1:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    spec = SPECS[resource.table]
+    payload = parse_json_object(request, operation="update")
+    values = validate_payload(spec, payload, partial=True)
+    row = update_master(get_db(), spec, resource_id, values)
+    return jsonify({"data": _serialize(resource, row)})
+
+
+def update_resource_status(resource: Resource, resource_id: int):
+    if resource_id < 1:
+        raise APIError("RESOURCE_NOT_FOUND", "Resource tidak ditemukan.", 404)
+    spec = SPECS[resource.table]
+    payload = parse_json_object(request, operation="status")
+    is_active = validate_status_payload(payload)
+    row = set_master_status(get_db(), spec, resource_id, is_active)
+    return jsonify({"data": _serialize(resource, row)})
+
+
 def _register_routes() -> None:
     for resource in RESOURCES:
         api.add_url_rule(f"/{resource.path}", endpoint=f"list_{resource.table}", view_func=lambda resource=resource: list_resource(resource), methods=("GET",))
         api.add_url_rule(f"/{resource.path}/<int:resource_id>", endpoint=f"detail_{resource.table}", view_func=lambda resource_id, resource=resource: detail_resource(resource, resource_id), methods=("GET",))
+        if resource.table in SPECS:
+            api.add_url_rule(f"/{resource.path}", endpoint=f"create_{resource.table}", view_func=lambda resource=resource: create_resource(resource), methods=("POST",))
+            api.add_url_rule(f"/{resource.path}/<int:resource_id>", endpoint=f"update_{resource.table}", view_func=lambda resource_id, resource=resource: update_resource(resource, resource_id), methods=("PATCH",))
+            api.add_url_rule(f"/{resource.path}/<int:resource_id>/status", endpoint=f"status_{resource.table}", view_func=lambda resource_id, resource=resource: update_resource_status(resource, resource_id), methods=("PATCH",))
 
 
 _register_routes()
