@@ -1,7 +1,7 @@
 # API-CONTRACT.md
 
-**Versi 1.0-final-dokumentasi | 18 Oktober 2026**  
-**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-065; belum merupakan implementasi Flask.
+**Versi 1.0-final-dokumentasi | 19 Oktober 2026**
+**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-066; status implementasi dicatat terpisah.
 
 ## 1. Prinsip antarkomponen
 
@@ -34,7 +34,7 @@
 
 Field sistem meliputi `id`, `is_active`, timestamp, revision, snapshot, nested summary, dan assignment solver. Create selalu aktif. `is_active` hanya diubah melalui endpoint status dengan body tepat `{"is_active":true}` atau `{"is_active":false}`. PATCH detail bersifat parsial, wajib memiliki minimal satu field writable, menolak null untuk field non-nullable, dan nilai identik adalah no-op.
 
-List master memakai default `page=1`, `page_size=20` (maksimum 100), `sort_by=id`, `sort_order=asc`, dan `is_active=true`; query opsional adalah `sort_by`, `search`, serta `is_active=true|false|all`. Sorting selalu stabil: setelah field pilihan dan arah yang diminta, backend memakai `id` sebagai tie-breaker terakhir dengan arah yang sama. Search adalah case-insensitive contains pada kolom yang diizinkan tabel di atas; nilai di-trim, panjang setelah trim maksimum 100 karakter, dan karakter `%` serta `_` dari pengguna diperlakukan literal, bukan wildcard SQL. Page di luar total menghasilkan data kosong. History tetap memakai default `sort_by=created_at`, `sort_order=desc`, `status=all`, dengan `id` sebagai tie-breaker stabil; status hanya `active|invalid|archived|all`.
+List master memakai default `page=1`, `page_size=20` (maksimum 100), `sort_by=id`, `sort_order=asc`, dan `is_active=true`; query opsional adalah `sort_by`, `search`, serta `is_active=true|false|all`. Sorting selalu stabil: setelah field pilihan dan arah yang diminta, backend memakai `id` sebagai tie-breaker terakhir dengan arah yang sama. Search adalah case-insensitive contains pada kolom yang diizinkan tabel di atas; nilai di-trim, panjang setelah trim maksimum 100 karakter, dan karakter `%` serta `_` dari pengguna diperlakukan literal, bukan wildcard SQL. Page di luar total menghasilkan data kosong. History memakai default `sort_by=created_at`, `sort_order=desc`, dan `status=all`. History hanya menerima `sort_by=created_at|id` dan `sort_order=asc|desc`; ketika primary sort adalah `created_at`, `id` menjadi tie-breaker stabil dengan arah yang sama, sedangkan `sort_by=id` cukup diurutkan berdasarkan `id`. Filter status tetap hanya `active|invalid|archived|all`, dan pagination mengikuti aturan list di atas.
 
 ### 2.3 Legenda inventaris
 
@@ -480,6 +480,17 @@ Generate success, save success, active, dan detail history memakai bentuk assign
 
 Generate mengambil display dari snapshot source sebelum solver. Save, active, dan history mengambilnya dari snapshot immutable, bukan JOIN ulang ke master. Assignment dan snapshot bukan input writable. Generate hanya menerima `{}`; unsatisfiable HTTP 200, assignment kosong, dan tanpa preview. Save hanya menerima `preview_id`. Active kosong adalah HTTP 200 `{"data":null}`.
 
+### 10.1 Persistensi dan identitas preview
+
+- Untuk preview `success`, `preview_jadwal.hasil_json` menyimpan full validated solver response schema versi 1 yang terdiri dari `schema_version`, `source_revision`, `status`, dan `assignments`.
+- Nilai `status` pada hasil yang dipersistenkan harus `success`; respons solver yang tidak lolos validasi kontrak tidak boleh dipersistenkan sebagai preview sukses.
+- `hasil_json` diserialisasi sebagai JSON valid secara deterministik menggunakan urutan key stabil dan separator konsisten. Implementasi Python menggunakan ekuivalen `json.dumps(..., ensure_ascii=False, sort_keys=True, separators=(",", ":"))`.
+- Display assignments dan source snapshot disimpan terpisah dalam `preview_jadwal.snapshot_json`; `snapshot_json` bukan pengganti full solver response di `hasil_json`.
+- Save wajib memvalidasi integritas dan konsistensi `hasil_json`, `snapshot_json`, `source_revision`, serta detail jadwal yang akan disimpan sebelum transaksi di-commit.
+- Generate membuat UUIDv4 acak menggunakan Python standard library dan mengembalikannya dalam representasi canonical lowercase hyphenated.
+- Save menerima representasi UUID canonical lowercase hyphenated yang valid untuk versi RFC UUID yang didukung parser Python. UUID malformed atau valid tetapi noncanonical menghasilkan `VALIDATION_ERROR`; UUID canonical yang valid tetapi tidak ditemukan menghasilkan `PREVIEW_NOT_FOUND`.
+- UUID tidak memiliki semantik urutan waktu dan tidak boleh digunakan untuk mengurutkan preview atau history.
+
 ## 11. Revision, invalidation, dan transaksi
 
 ### 11.1 Matriks dampak final
@@ -508,13 +519,13 @@ Setiap mutasi efektif pada enam resource bertimestamp memperbarui `updated_at`, 
 1. Baca dataset aktif, revision, dan snapshot source dalam transaksi baca konsisten; preflight lalu tutup transaksi.
 2. Jalankan Prolog di luar transaksi, maksimal 30 detik; verifikasi hasil konkret C01–C09 tanpa pencarian alternatif.
 3. Untuk success valid, mulai transaksi write dengan locking yang mencegah race, baca revision terkini di dalam transaksi, lalu bandingkan.
-4. Revision berbeda menghasilkan STALE_GENERATION tanpa insert. Revision sama menginsert preview ready beserta expiry, hasil, dan snapshot lalu commit.
+4. Revision berbeda menghasilkan STALE_GENERATION tanpa insert. Revision sama membuat UUIDv4 canonical lalu menginsert preview ready beserta expiry, full validated solver response v1 di `hasil_json`, dan display assignments/source snapshot di `snapshot_json`, kemudian commit.
 
 Revision check dan insert preview tidak boleh dipisahkan. Hanya success valid menghasilkan preview.
 
 ### 11.3 Save dan prioritas preview
 
-Gunakan `BEGIN IMMEDIATE`. Dalam transaksi konsisten, evaluasi: (1) tidak ditemukan → PREVIEW_NOT_FOUND; (2) consumed → PREVIEW_CONSUMED; (3) stale terminal → STALE_PREVIEW; (4) expired terminal → PREVIEW_EXPIRED; (5) ready dan TTL lewat → persist expired, commit, lalu PREVIEW_EXPIRED; (6) ready dan revision berbeda → persist stale, commit, lalu STALE_PREVIEW; (7) valid → archive active lama, buat active baru, simpan snapshot/detail, conditional consume tepat satu baris, dan commit bersama.
+Validasi terlebih dahulu `preview_id` sebagai UUID canonical lowercase hyphenated; malformed atau noncanonical menghasilkan `VALIDATION_ERROR`. Gunakan `BEGIN IMMEDIATE`. Dalam transaksi konsisten, evaluasi: (1) UUID valid tidak ditemukan → PREVIEW_NOT_FOUND; (2) consumed → PREVIEW_CONSUMED; (3) stale terminal → STALE_PREVIEW; (4) expired terminal → PREVIEW_EXPIRED; (5) ready dan TTL lewat → persist expired, commit, lalu PREVIEW_EXPIRED; (6) ready dan revision berbeda → persist stale, commit, lalu STALE_PREVIEW; (7) valid → validasi integritas dan konsistensi `hasil_json`, `snapshot_json`, `source_revision`, serta detail yang akan disimpan, archive active lama, buat active baru, simpan snapshot/detail, conditional consume tepat satu baris, dan commit bersama.
 
 Jika ready sekaligus expired dan stale, expiry menang. Status terminal tidak diubah. Commit pada langkah 5/6 wajib agar transisi terminal tidak hilang walau save ditolak. Kegagalan sistem pada jalur valid me-rollback archive, versi, detail, dan consume bersama.
 
@@ -601,7 +612,7 @@ Request generate untuk contoh 10–14 selalu:
 
 10. Generate success, HTTP 200:
 ```json
-{"data":{"status":"success","preview_id":"0199f3c7-8d6a-7b21-9a10-63dd370f2a41","preview_status":"ready","source_revision":7,"created_at":"2026-10-18T08:30:00.000Z","expires_at":"2026-10-18T09:00:00.000Z","summary":{"total_praktikum":1,"total_assignment":1},"assignments":[{"praktikum_id":11,"mata_praktikum":{"id":1,"nama":"Kecerdasan Buatan"},"kelompok":{"id":2,"nama":"IF-3A","jumlah_peserta":24},"asisten":{"id":3,"nama":"Rina"},"slot_waktu":{"id":4,"hari":1,"jam_mulai":"08:00","jam_selesai":"10:00"},"laboratorium":{"id":5,"nama":"Lab AI","kapasitas":30}}]}}
+{"data":{"status":"success","preview_id":"550e8400-e29b-41d4-a716-446655440000","preview_status":"ready","source_revision":7,"created_at":"2026-10-18T08:30:00.000Z","expires_at":"2026-10-18T09:00:00.000Z","summary":{"total_praktikum":1,"total_assignment":1},"assignments":[{"praktikum_id":11,"mata_praktikum":{"id":1,"nama":"Kecerdasan Buatan"},"kelompok":{"id":2,"nama":"IF-3A","jumlah_peserta":24},"asisten":{"id":3,"nama":"Rina"},"slot_waktu":{"id":4,"hari":1,"jam_mulai":"08:00","jam_selesai":"10:00"},"laboratorium":{"id":5,"nama":"Lab AI","kapasitas":30}}]}}
 ```
 
 11. Generate unsatisfiable, HTTP 200 dan tanpa preview:
@@ -626,7 +637,7 @@ Request generate untuk contoh 10–14 selalu:
 
 Request save untuk contoh 15–18 selalu:
 ```json
-{"preview_id":"0199f3c7-8d6a-7b21-9a10-63dd370f2a41"}
+{"preview_id":"550e8400-e29b-41d4-a716-446655440000"}
 ```
 
 15. Save success, HTTP 201:

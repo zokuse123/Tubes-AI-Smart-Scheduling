@@ -7,6 +7,7 @@
 - [x] Finalisasi kontrak subprocess, JSON solver, verifier, CSP, failure matrix, dan fixture konseptual melalui DEC-028–DEC-042.
 - [x] Finalisasi kontrak REST v1 40 operasi, envelope/status/error, assignment display, transaksi, dan health melalui DEC-043–DEC-059.
 - [x] Finalisasi kontrak backend nested praktikum, sorting/search, timestamp/revision, lifecycle database, dan kebijakan dependency melalui DEC-061–DEC-065 (TASK 10A.1; dokumentasi saja).
+- [x] Finalisasi ambiguitas kontrak scheduling melalui DEC-066: canonical persisted solver result, UUID preview, dan sorting history (TASK 13A.1; dokumentasi saja).
 - [ ] Bertiga review PROJECT-SPEC, DATA-MODEL, AI-RULES, API-CONTRACT dan DECISIONS.
 - [ ] Catat bukti formal izin/persetujuan yang diperlukan dan konfirmasi tanggal deadline; penggunaan Flask/React dinyatakan aman dalam konteks TASK 10A.1, tetapi review tiga anggota belum dianggap selesai.
 - [ ] Sepakati GitHub repo, branch, cara review PR, dan aturan perubahan spesifikasi.
