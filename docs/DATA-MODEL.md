@@ -3,7 +3,7 @@
 **Smart Lab Scheduling System**  
 **Versi:** 2.0-draft-finalisasi-dokumentasi  
 **Tanggal:** 18 Oktober 2026  
-**Status:** Skema dokumentasi berdasarkan DEC-001–DEC-059; belum berupa migrasi atau implementasi.
+**Status:** Skema dokumentasi berdasarkan DEC-001–DEC-065; fondasi dan migrasi DEC-060 telah tersedia, sedangkan keputusan backend TASK 10A.1 belum merupakan implementasi endpoint.
 
 ## 1. Otoritas dan prinsip data
 
@@ -17,7 +17,7 @@
 - Nama kelompok, laboratorium, dan mata praktikum unik secara case-insensitive. Nama asisten tidak wajib unik sesuai DEC-025.
 - Semua timestamp backend menggunakan RFC 3339 UTC fixed-width dengan milidetik, misalnya `2026-10-18T08:30:00.000Z`. Backend adalah sumber waktu.
 - Setiap kolom timestamp wajib memiliki validasi bentuk fixed-width di backend dan CHECK SQLite ekuivalen (`length(value)=24`, karakter pemisah pada posisi RFC 3339 yang tetap, digit/rentang komponen valid, dan akhiran `Z`). Perbandingan leksikografis aman karena semua nilai memakai bentuk UTC yang sama.
-- Sesuai DEC-060, enam entitas master (`mata_praktikum`, `kelompok`, `asisten`, `laboratorium`, `slot_waktu`, `praktikum`) memiliki kolom `created_at` dan `updated_at` fixed-width RFC 3339 UTC. `created_at` immutable setelah insert (dilindungi trigger); `updated_at` diperbarui atomik hanya pada mutasi efektif bersama kenaikan `source_revision`. Permintaan no-op tidak mengubah `updated_at` maupun `source_revision`.
+- Sesuai DEC-060 dan perincian DEC-063, enam entitas master (`mata_praktikum`, `kelompok`, `asisten`, `laboratorium`, `slot_waktu`, `praktikum`) memiliki kolom `created_at` dan `updated_at` fixed-width RFC 3339 UTC. `created_at` immutable setelah insert (dilindungi trigger). Setiap mutasi efektif memperbarui `updated_at`, termasuk pada entity nonaktif; `source_revision` hanya naik bila perubahan memengaruhi dataset aktif menurut matriks. Permintaan no-op tidak mengubah `updated_at` maupun `source_revision`.
 - Setiap kolom timestamp (`created_at`, `updated_at`, dan kolom waktu pada versi/preview) divalidasi oleh CHECK constraint SQLite yang ketat: panjang tepat 24 karakter, format canonical `YYYY-MM-DDTHH:MM:SS.sssZ`, validitas kalender Gregorian (menolak tanggal fiktif seperti 31 April atau 29 Februari non-kabisat), dan tanpa evaluasi NULL yang lolos secara tidak sengaja.
 - Hari memakai integer 1=Senin sampai 5=Jumat. Waktu slot memakai `HH:MM` 24 jam dan interval half-open `[mulai, selesai)`.
 - Setiap kolom jam wajib memiliki validasi bentuk `HH:MM` di backend dan CHECK SQLite ekuivalen: panjang 5, pemisah `:`, jam `00`–`23`, dan menit `00`–`59`.
@@ -249,7 +249,7 @@
 
 **Seed wajib:** `('source_revision', 0)`.  
 **Index:** primary key cukup.  
-**Perubahan/penghapusan:** counter bertambah tepat satu kali per transaksi mutasi efektif, bukan per baris. Backend wajib memastikan update key `source_revision` memengaruhi tepat satu baris. Key seed tidak boleh dihapus melalui UI.
+**Perubahan/penghapusan:** counter bertambah tepat satu kali per transaksi yang memengaruhi dataset aktif, bukan per baris. Mutasi efektif yang hanya menyentuh entity nonaktif dan belum relevan tidak menaikkan counter. Backend wajib memastikan update key `source_revision` memengaruhi tepat satu baris. Key seed tidak boleh dihapus melalui UI.
 
 ## 4. Relasi dan sumber kebenaran
 
@@ -286,7 +286,7 @@ C05–C07 menggunakan semantik interval half-open. Karena slot aktif global tida
 - **Perubahan kegiatan wajib:** menambah, menghapus secara logis, mengaktifkan, menonaktifkan, atau mengubah relasi kegiatan aktif yang wajib dijadwalkan.
 - **Perubahan label snapshot:** perubahan nama aktif yang tampil pada preview/snapshot tetapi tidak mengubah kelayakan assignment.
 - **Memengaruhi jadwal active:** perubahan membuat assignment tersimpan tidak lagi valid, lengkap, atau layak menurut dataset baru.
-- Revision naik sekali per transaksi bila ada setidaknya satu mutasi efektif. No-op tidak menaikkan revision.
+- Revision naik sekali per transaksi bila ada setidaknya satu mutasi efektif yang memengaruhi dataset aktif. Mutasi efektif pada entity nonaktif yang belum relevan dan no-op tidak menaikkan revision; hanya mutasi efektif yang memperbarui `updated_at`.
 - Invalidasi hanya dilakukan bila mutasi memengaruhi validitas, cakupan, atau kelayakan jadwal active.
 
 ### 6.2 Matriks mutasi
@@ -320,7 +320,7 @@ C05–C07 menggunakan semantik interval half-open. Karena slot aktif global tida
 | Buat/consume/expire/stale/cleanup preview | C | Tetap | Tetap | Preview bukan sumber solver. |
 | Buat atau transisikan versi jadwal | C | Tetap | Sesuai state save | Riwayat bukan dataset solver. |
 
-Kategori: **A** revision naik dan active invalid; **B** revision naik tetapi active tetap valid; **C** revision dan status active tidak berubah. Setiap kenaikan revision membuat preview `ready` lama stale secara semantik; status `stale` dipersistensikan ketika preview diperiksa, bukan lewat update massal. Sesuai DEC-060, setiap mutasi efektif (Kategori A dan B) memperbarui kolom `updated_at` pada entitas yang bersangkutan bersama kenaikan `source_revision`. Permintaan no-op (Kategori C) tidak mengubah `updated_at` maupun `source_revision`.
+Kategori: **A** revision naik dan active invalid; **B** revision naik tetapi active tetap valid; **C** revision dan status active tidak berubah. Setiap kenaikan revision membuat preview `ready` lama stale secara semantik; status `stale` dipersistensikan ketika preview diperiksa, bukan lewat update massal. Sesuai DEC-063, setiap mutasi efektif pada enam entitas bertimestamp memperbarui `updated_at`. Karena kategori C juga mencakup mutasi efektif pada entity nonaktif, kategori C tidak selalu berarti no-op: mutasi tersebut mengubah `updated_at` tetapi tidak mengubah revision/status active. No-op murni tidak mengubah `updated_at`, `source_revision`, maupun status jadwal.
 
 Kasus dengan beberapa mutasi dalam satu transaksi memakai dampak terkuat: bila satu mutasi kategori A, revision tetap hanya naik satu kali dan jadwal active diinvalidasi satu kali.
 
@@ -415,9 +415,13 @@ Snapshot provisional di `preview_jadwal` memakai struktur yang sama, tetapi `sav
 
 ### 9.1 Mutasi dataset
 
-Gunakan satu transaksi tulis. Jika mutasi efektif: ubah data, increment `source_revision` tepat satu kali, lalu invalidasi active bila kategori A. Kegagalan apa pun rollback seluruh langkah. Mutasi no-op tidak mengubah counter.
+Gunakan satu transaksi tulis. Jika mutasi efektif: ubah data dan `updated_at`; increment `source_revision` tepat satu kali hanya bila perubahan memengaruhi dataset aktif; lalu invalidasi active bila kategori A. Kegagalan apa pun rollback seluruh langkah. Mutasi efektif entity nonaktif yang tidak memengaruhi dataset aktif tidak menaikkan counter. Mutasi no-op tidak mengubah data, timestamp, atau counter.
 
-### 9.2 Generate
+### 9.2 Siklus hidup database
+
+Inisialisasi dan migrasi database hanya dijalankan melalui perintah CLI maintenance yang eksplisit. Flask tidak menjalankan migrasi otomatis saat startup ataupun saat menangani request. Startup boleh memeriksa koneksi, versi/schema yang diharapkan, serta dependency, kemudian gagal dengan pesan aman bila database belum siap; pemeriksaan ini tidak boleh mengubah schema.
+
+### 9.3 Generate
 
 1. Buka transaksi baca singkat dan baca revision serta dataset secara konsisten.
 2. Tutup transaksi.
@@ -472,7 +476,7 @@ Availability kosong bukan referensi rusak: baris yang tidak ada berarti tidak te
 - Dua save bersamaan hanya menghasilkan satu versi.
 - Rollback tidak meninggalkan revision, invalidation, versi, detail, atau consumed state parsial.
 - Mutasi no-op tidak menaikkan revision.
-- Satu transaksi multi-baris menaikkan revision tepat satu kali.
+- Satu transaksi multi-baris yang memengaruhi dataset aktif menaikkan revision tepat satu kali.
 - Reaktivasi tidak memulihkan jadwal invalid.
 - Cleanup preview terminal lebih tua dari 7 hari tidak mengubah revision atau status jadwal.
 

@@ -1,7 +1,7 @@
 # API-CONTRACT.md
 
 **Versi 1.0-final-dokumentasi | 18 Oktober 2026**  
-**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-059; belum merupakan implementasi.
+**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-065; belum merupakan implementasi Flask.
 
 ## 1. Prinsip antarkomponen
 
@@ -34,7 +34,7 @@
 
 Field sistem meliputi `id`, `is_active`, timestamp, revision, snapshot, nested summary, dan assignment solver. Create selalu aktif. `is_active` hanya diubah melalui endpoint status dengan body tepat `{"is_active":true}` atau `{"is_active":false}`. PATCH detail bersifat parsial, wajib memiliki minimal satu field writable, menolak null untuk field non-nullable, dan nilai identik adalah no-op.
 
-List master memakai default `page=1`, `page_size=20` (maksimum 100), `sort_order=asc`, dan `is_active=true`; query opsional adalah `sort_by`, `search`, serta `is_active=true|false|all`. Search di-trim dan maksimum 100 karakter. Page di luar total menghasilkan data kosong. History memakai default `sort_by=created_at`, `sort_order=desc`, `status=all`; status hanya `active|invalid|archived|all`.
+List master memakai default `page=1`, `page_size=20` (maksimum 100), `sort_by=id`, `sort_order=asc`, dan `is_active=true`; query opsional adalah `sort_by`, `search`, serta `is_active=true|false|all`. Sorting selalu stabil: setelah field pilihan dan arah yang diminta, backend memakai `id` sebagai tie-breaker terakhir dengan arah yang sama. Search adalah case-insensitive contains pada kolom yang diizinkan tabel di atas; nilai di-trim, panjang setelah trim maksimum 100 karakter, dan karakter `%` serta `_` dari pengguna diperlakukan literal, bukan wildcard SQL. Page di luar total menghasilkan data kosong. History tetap memakai default `sort_by=created_at`, `sort_order=desc`, `status=all`, dengan `id` sebagai tie-breaker stabil; status hanya `active|invalid|archived|all`.
 
 ### 2.3 Legenda inventaris
 
@@ -91,7 +91,13 @@ Enam resource × lima operasi = 30, availability = 4, scheduling = 5, health = 1
 
 PUT availability adalah full replacement dengan body tepat `{"slot_ids":[1,2,3]}`. Array kosong valid; ID harus integer positif; duplikat ditolak; urutan diabaikan. Slot hilang menghasilkan INVALID_REFERENCE dan slot nonaktif INACTIVE_REFERENCE. GET/PUT owner nonaktif diizinkan; perubahan efektifnya kategori C sampai reaktivasi relevan mengevaluasi dataset.
 
-Nested `mata_praktikum`, `kelompok`, dan `asisten` pada list/detail praktikum adalah read-only dari master terkini. Write tetap memakai FK integer. Riwayat selalu memakai snapshot immutable.
+Nested summary pada list/detail praktikum bersifat read-only dan berasal dari master terkini dengan bentuk tepat berikut:
+
+- `mata_praktikum`: `{"id": integer, "nama": string}`
+- `kelompok`: `{"id": integer, "nama": string, "jumlah_peserta": integer}`
+- `asisten`: `{"id": integer, "nama": string}`
+
+Object `praktikum` tetap memuat field utamanya (`id`, `mata_praktikum_id`, `kelompok_id`, `asisten_id`) serta metadata (`is_active`, `created_at`, `updated_at`) sesuai kontrak resource. Write tetap memakai tiga FK integer; nested summary dan metadata bukan input writable. Riwayat selalu memakai snapshot immutable.
 
 ### 2.6 Mapping HTTP error final
 
@@ -495,7 +501,7 @@ Generate mengambil display dari snapshot source sebelum solver. Save, active, da
 | Perubahan entitas nonaktif yang belum relevan, termasuk availability owner nonaktif | tetap | tetap | tetap |
 | No-op | tetap | tetap | tetap |
 
-Reaktivasi mengevaluasi seluruh state yang menjadi relevan dan menaikkan revision sekali bila dataset efektif berubah. Beberapa mutasi dalam satu transaksi tetap satu increment. DEC-055 memperinci DEC-014: pemakaian entitas saja tidak cukup untuk invalidation; evaluasi memakai assignment active aktual, C01–C09, dan coverage.
+Setiap mutasi efektif pada enam resource bertimestamp memperbarui `updated_at`, termasuk baris nonaktif pada baris kategori C di atas. No-op tidak memperbarui timestamp. Reaktivasi mengevaluasi seluruh state yang menjadi relevan dan menaikkan revision sekali bila dataset aktif berubah. Beberapa mutasi relevan dalam satu transaksi tetap satu increment. DEC-055 memperinci DEC-014: pemakaian entitas saja tidak cukup untuk invalidation; evaluasi memakai assignment active aktual, C01–C09, dan coverage.
 
 ### 11.2 Generate
 
@@ -516,11 +522,18 @@ Jika ready sekaligus expired dan stale, expiry menang. Status terminal tidak diu
 
 Satu transaksi melakukan validasi, deteksi no-op, klasifikasi revision, evaluasi assignment/coverage active, update, increment tepat sekali bila perlu, dan invalidation kategori A. Kegagalan rollback seluruhnya. Preview tidak diubah massal karena save selalu memeriksa revision.
 
-## 12. Health
+## 12. Startup database dan dependency backend
+
+- Inisialisasi dan migrasi SQLite dijalankan hanya melalui CLI maintenance yang eksplisit. Flask tidak menjalankan migrasi pada startup maupun request. Startup hanya melakukan pemeriksaan read-only terhadap kesiapan database/dependency dan gagal aman bila schema belum siap.
+- Baseline dependency adalah Flask 3.1.3 dan Flask-CORS 6.0.5. Rentang yang diizinkan sebelum review berikutnya: `Flask>=3.1.3,<3.2` dan `Flask-CORS>=6.0.5,<6.1`.
+- Metadata rilis resmi masing-masing mensyaratkan Python `>=3.9` dan `>=3.9,<4.0`, sehingga mencakup Python 3.14. Karena classifier eksplisit upstream belum menjadi bukti pengujian Python 3.14, implementasi wajib memverifikasi instalasi/resolusi pada Python 3.14, menjalankan seluruh unit/contract test, smoke test application factory, dan uji preflight CORS. Versi hasil resolusi direkam secara reproducible sebelum rilis.
+- Sumber versi: [Flask di PyPI](https://pypi.org/project/Flask/) dan [Flask-CORS di PyPI](https://pypi.org/project/flask-cors/), diperiksa 19 Oktober 2026. Tahap ini tidak memasang paket atau mengubah manifest dependency.
+
+## 13. Health
 
 GET `/api/v1/health` tidak menjalankan CSP. HTTP 200 bila backend, query ringan database, dan executable SWI-Prolog tersedia. Bila database atau solver unavailable, gunakan HTTP 503 dengan `data.status=degraded` dan status komponen `available|unavailable`. Jangan mengembalikan path, traceback, atau konfigurasi.
 
-## 13. Contoh JSON REST final
+## 14. Contoh JSON REST final
 
 Seluruh timestamp mengikuti DEC-018 dan semua blok berikut merupakan JSON valid.
 

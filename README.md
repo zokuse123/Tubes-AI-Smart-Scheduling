@@ -1,7 +1,7 @@
-# Smart Lab Scheduling System — Paket Spesifikasi Awal
+# Smart Lab Scheduling System
 
-Paket dokumen untuk koordinasi tiga pengembang yang memakai AI coding. **Belum berisi aplikasi atau kode siap jalan.**
+Repository koordinasi tiga pengembang yang memuat spesifikasi, fondasi SQLite backend, dan mesin CSP SWI-Prolog. Implementasi Flask REST dan frontend belum dimulai pada tahap dokumentasi TASK 10A.1.
 
 Baca berurutan: `docs/DECISIONS.md` → `docs/PROJECT-SPEC.md` → `docs/DATA-MODEL.md` → `docs/AI-RULES.md` → `docs/API-CONTRACT.md` → `AGENTS.md` → `docs/TASK-BOARD.md`.
 
-Catatan: `docs/DECISIONS.md` adalah sumber kebenaran untuk DEC-001 sampai DEC-059. Model domain, skema SQLite, revision/invalidation, state machine, snapshot historis, kontrak Flask–SWI-Prolog, dan kontrak REST v1 40 operasi telah dikunci pada tingkat dokumentasi. Ini belum merupakan implementasi; keputusan OPEN tetap harus direview, benchmark masih diperlukan, dan penggunaan Python/React perlu dikonfirmasi kepada dosen.
+Catatan: `docs/DECISIONS.md` adalah sumber kebenaran untuk DEC-001 sampai DEC-065. Model domain, skema SQLite, revision/invalidation, state machine, snapshot historis, kontrak Flask–SWI-Prolog, kontrak REST v1 40 operasi, serta kontrak backend TASK 10A.1 telah dikunci pada tingkat dokumentasi. Keputusan dokumentasi bukan bukti implementasi atau persetujuan tiga anggota; item OPEN dan gerbang review pada `docs/TASK-BOARD.md` tetap berlaku.

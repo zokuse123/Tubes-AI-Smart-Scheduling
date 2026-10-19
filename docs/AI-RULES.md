@@ -1,5 +1,5 @@
 # AI-RULES.md
-**Status:** kontrak AI versi 1 dan batas integrasi REST difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-059; belum ada implementasi atau hasil benchmark.
+**Status:** kontrak AI versi 1 dan batas integrasi REST tetap berlaku; mesin SWI-Prolog dan benchmark TASK 07 telah tersedia. DEC-061–DEC-065 memperinci kontrak backend tanpa mengubah C01–C09 atau schema JSON solver.
 
 ## Tugas AI
 SWI-Prolog adalah sumber kebenaran keputusan penjadwalan. Untuk setiap kegiatan `praktikum` aktif, pilih tepat satu pasangan `(slot_id, laboratorium_id)` dari data yang valid. `mata_praktikum` adalah katalog dan bukan unit yang dijadwalkan. Flask melakukan validasi format, referensi, status, dan transaksi; **Flask tidak membuat solver alternatif**.

@@ -11,7 +11,7 @@ Membangun aplikasi web lokal untuk membantu pengelola menjadwalkan kegiatan prak
 ## 2. Konteks UAS
 Proyek ditujukan untuk tutorial UAS Inteligensi Artifisial bertema AI with PROLOG. Materi tutorial mencakup instalasi tools, pengenalan lingkungan kerja, deskripsi persoalan, deskripsi solusi, dan demonstrasi penerapan. Fokus akademik adalah fakta, aturan, representasi pengetahuan, dan penalaran Prolog.
 
-**Perlu dikonfirmasi:** izin dosen menggunakan React/Python sebagai antarmuka dan integrasi; tanggal pasti pertemuan ke-11. Demo terminal SWI-Prolog disiapkan sebagai alternatif bila perlu.
+Penggunaan React dan Python/Flask sebagai antarmuka dan integrasi telah dikonfirmasi aman untuk proyek pada TASK 10A.1. Tanggal pasti pertemuan ke-11 masih perlu dikonfirmasi. Demo terminal SWI-Prolog tetap disiapkan sebagai alternatif bila perlu.
 
 ## 3. Arsitektur yang direncanakan
 - Frontend: React, Vite, Tailwind CSS, shadcn/ui.
@@ -162,7 +162,7 @@ Prototipe `Project-1-Smart-Scheduling` di lokasi lain **tidak dipindahkan atau d
 - Semua timestamp backend menggunakan RFC 3339 UTC fixed-width dengan milidetik (DEC-018).
 - Snapshot adalah sumber sejarah canonical dan detail adalah indeks immutable (DEC-019, DEC-020).
 - Save preview menggunakan `BEGIN IMMEDIATE`, conditional consume, rollback atomik, dan partial unique index untuk satu active (DEC-021).
-- `source_revision` dimulai dari 0 dan naik tepat sekali per transaksi mutasi efektif (DEC-022).
+- `source_revision` dimulai dari 0 dan naik tepat sekali per transaksi mutasi efektif yang memengaruhi dataset aktif; perincian mutasi entity nonaktif mengikuti DEC-063.
 - Slot aktif dilindungi dari overlap oleh constraint, trigger SQLite, dan validasi Flask (DEC-023).
 - Prolog berjalan di luar transaksi; revision diperiksa kembali sebelum preview diterbitkan tanpa retry otomatis (DEC-024).
 - Nama asisten tidak wajib unik (DEC-025).
@@ -193,3 +193,11 @@ Prototipe `Project-1-Smart-Scheduling` di lokasi lain **tidak dipindahkan atau d
 - Request JSON dibatasi 256 KiB, divalidasi strict dan aman; CORS lokal bukan authentication (DEC-058).
 - Health memeriksa backend, database, dan executable SWI-Prolog tanpa menjalankan CSP atau membocorkan konfigurasi (DEC-059).
 - Inventaris tepat 40 operasi, contoh JSON, status/error, dan transaksi final berada di `API-CONTRACT.md`. Frontend hanya berkomunikasi dengan Flask; Flask tidak menjalankan pencarian CSP.
+
+## Addendum DEC-060 sampai DEC-065: Timestamp dan kontrak backend (19 Oktober 2026)
+
+- Enam entity master/kegiatan memakai timestamp canonical DEC-060. DEC-063 memperjelas bahwa mutasi efektif entity nonaktif tetap memperbarui `updated_at`, sedangkan revision hanya naik bila dataset aktif terdampak; no-op tidak mengubah keduanya.
+- Nested summary praktikum mempunyai shape tetap untuk mata praktikum, kelompok, dan asisten, tanpa mengganti tiga foreign key writable (DEC-061).
+- List resource memakai `sort_by=id`, `sort_order=asc`, tie-break `id`, serta contains search case-insensitive dengan `%` dan `_` literal dan batas 100 karakter setelah trim (DEC-062).
+- Inisialisasi/migrasi SQLite dijalankan eksplisit melalui CLI; Flask tidak melakukan auto-migration saat startup atau request (DEC-064).
+- Backend memakai baseline Flask 3.1.3 dan Flask-CORS 6.0.5 dengan minor-line constraint dan test gate Python 3.14 sebelum dependency direkam untuk rilis (DEC-065).
