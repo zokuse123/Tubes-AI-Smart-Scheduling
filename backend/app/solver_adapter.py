@@ -1,7 +1,6 @@
 """Bounded subprocess adapter untuk kontrak CLI SWI-Prolog versi 1."""
 
 import json
-import os
 import shutil
 import subprocess
 import threading
@@ -49,7 +48,7 @@ def _resolve_executable(value: str) -> str:
     return str(Path(resolved).resolve())
 
 
-def _stop_process(process: subprocess.Popen) -> None:
+def _stop_process(process: subprocess.Popen) -> bool:
     if process.poll() is None:
         try:
             process.terminate()
@@ -59,7 +58,8 @@ def _stop_process(process: subprocess.Popen) -> None:
                 process.kill()
                 process.wait(timeout=1)
             except (OSError, subprocess.TimeoutExpired):
-                pass
+                return False
+    return process.poll() is not None
 
 
 def _capture_process(command: list[str], payload: bytes, config: SolverConfig):
@@ -80,6 +80,12 @@ def _capture_process(command: list[str], payload: bytes, config: SolverConfig):
     failures: list[BaseException] = []
     lock = threading.Lock()
 
+    def close_stream(stream) -> None:
+        try:
+            stream.close()
+        except (OSError, ValueError) as exc:
+            failures.append(exc)
+
     def reader(name: str, stream) -> None:
         try:
             while True:
@@ -96,10 +102,7 @@ def _capture_process(command: list[str], payload: bytes, config: SolverConfig):
         except (OSError, ValueError) as exc:
             failures.append(exc)
         finally:
-            try:
-                stream.close()
-            except OSError:
-                pass
+            close_stream(stream)
 
     def writer() -> None:
         try:
@@ -108,10 +111,7 @@ def _capture_process(command: list[str], payload: bytes, config: SolverConfig):
         except (OSError, ValueError, BrokenPipeError) as exc:
             failures.append(exc)
         finally:
-            try:
-                process.stdin.close()
-            except OSError:
-                pass
+            close_stream(process.stdin)
 
     threads = [
         threading.Thread(target=reader, args=("stdout", process.stdout), daemon=True),
@@ -123,24 +123,28 @@ def _capture_process(command: list[str], payload: bytes, config: SolverConfig):
 
     deadline = time.monotonic() + config.timeout_seconds
     timed_out = False
+    cleanup_failed = False
     try:
         while process.poll() is None:
             if overflow or failures:
-                _stop_process(process)
+                cleanup_failed = not _stop_process(process)
                 break
             if time.monotonic() >= deadline:
                 timed_out = True
-                _stop_process(process)
+                cleanup_failed = not _stop_process(process)
                 break
             time.sleep(0.005)
         process.wait(timeout=1)
     except (OSError, subprocess.TimeoutExpired):
         failures.append(OSError("process cleanup failed"))
-        _stop_process(process)
+        cleanup_failed = not _stop_process(process)
     finally:
         for thread in threads:
             thread.join(timeout=1)
-        _stop_process(process)
+        cleanup_failed = not _stop_process(process) or cleanup_failed
+
+    if cleanup_failed:
+        failures.append(OSError("process could not be reaped"))
 
     if timed_out:
         raise _error("SOLVER_TIMEOUT", "Pencarian melewati batas waktu 30 detik.", 504)

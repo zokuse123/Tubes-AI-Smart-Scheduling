@@ -1,12 +1,14 @@
 """Tests for the consistent SQLite scheduling projection."""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
 
 from backend.app.errors import APIError
 from backend.app.scheduling_dataset import read_scheduling_dataset
+import backend.app.scheduling_dataset as dataset_module
 from backend.db.init_db import init_db
 
 
@@ -121,3 +123,50 @@ def test_invalid_revision_is_not_ready(database):
         with pytest.raises(APIError) as caught:
             read_scheduling_dataset(db)
         assert caught.value.code == "DATA_NOT_READY"
+
+
+def test_concurrent_writer_cannot_mix_revision_and_snapshot(database, monkeypatch):
+    with sqlite3.connect(database) as setup:
+        setup.execute("PRAGMA journal_mode=WAL")
+    reader_started = threading.Event()
+    writer_done = threading.Event()
+    original_rows = dataset_module._rows
+    first_call = True
+
+    def coordinated_rows(db, sql):
+        nonlocal first_call
+        if first_call:
+            first_call = False
+            reader_started.set()
+            assert writer_done.wait(2)
+        return original_rows(db, sql)
+
+    def writer():
+        assert reader_started.wait(2)
+        with sqlite3.connect(database, timeout=2) as db:
+            db.execute("UPDATE mata_praktikum SET nama='AI revision 8' WHERE id=1")
+            db.execute("UPDATE system_metadata SET value=8 WHERE key='source_revision'")
+        writer_done.set()
+
+    monkeypatch.setattr(dataset_module, "_rows", coordinated_rows)
+    worker = threading.Thread(target=writer)
+    worker.start()
+    with connect(database) as db:
+        result = read_scheduling_dataset(db)
+        assert not db.in_transaction
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert result.source_revision == 7
+    assert result.solver_payload["source_revision"] == 7
+    assert result.source_snapshot["source_revision"] == 7
+    assert result.source_snapshot["mata_praktikum"][0]["nama"] == "AI"
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT value FROM system_metadata WHERE key='source_revision'").fetchone()[0] == 8
+
+
+def test_select_failure_rolls_back_explicit_read_transaction(database, monkeypatch):
+    monkeypatch.setattr(dataset_module, "_rows", lambda *_args: (_ for _ in ()).throw(sqlite3.OperationalError("forced")))
+    with connect(database) as db:
+        with pytest.raises(sqlite3.OperationalError):
+            read_scheduling_dataset(db)
+        assert not db.in_transaction
