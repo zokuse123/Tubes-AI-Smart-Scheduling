@@ -3,6 +3,7 @@
 import datetime as dt
 import json
 import sqlite3
+import time
 import uuid
 from typing import Any, Mapping
 
@@ -44,6 +45,12 @@ def _timestamp(value: dt.datetime) -> str:
 
 def _utc_now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
+
+
+def _elapsed_milliseconds(started_ns: int, finished_ns: int) -> int:
+    """Convert monotonic nanoseconds to nearest nonnegative millisecond."""
+    elapsed_ns = max(0, finished_ns - started_ns)
+    return (elapsed_ns + 500_000) // 1_000_000
 
 
 def _canonical_json(value: Any) -> str:
@@ -198,10 +205,23 @@ def generate_schedule(
     config: Mapping[str, Any],
 ) -> dict[str, Any]:
     dataset = read_scheduling_dataset(db)
-    solver_result = run_solver(dataset.solver_payload, SolverConfig.from_mapping(config))
+    solver_config = SolverConfig.from_mapping(config)
+    solver_started_ns = time.monotonic_ns()
+    try:
+        solver_result = run_solver(dataset.solver_payload, solver_config)
+    finally:
+        solver_finished_ns = time.monotonic_ns()
+        solver_wall_time_ms = _elapsed_milliseconds(
+            solver_started_ns, solver_finished_ns
+        )
+
+    # DEC-067 requires the complete diagnostics object atomically. Keep this
+    # measurement internal until domain candidates and verifier status exist.
+    del solver_wall_time_ms
     if solver_result["status"] == "unsatisfiable":
         return {
             "status": "unsatisfiable",
+            "source_revision": dataset.source_revision,
             "message": "Tidak ditemukan jadwal yang memenuhi seluruh aturan.",
             "assignments": [],
         }

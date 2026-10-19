@@ -87,6 +87,7 @@ def test_valid_empty_object_creates_canonical_preview(client, database):
     assert data["preview_id"] == str(parsed_uuid)
     assert data["preview_status"] == "ready"
     assert data["source_revision"] == 7
+    assert "solver_diagnostics" not in data
     assert data["created_at"] == "2026-10-19T08:30:00.000Z"
     assert data["expires_at"] == "2026-10-19T09:00:00.000Z"
     assert data["summary"] == {"total_praktikum": 1, "total_assignment": 1}
@@ -102,6 +103,7 @@ def test_valid_empty_object_creates_canonical_preview(client, database):
     assert preview["hasil_json"] == json.dumps(
         SUCCESS, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
+    assert "solver_diagnostics" not in json.loads(preview["hasil_json"])
     assert json.loads(preview["hasil_json"]) == SUCCESS
     snapshot = json.loads(preview["snapshot_json"])
     assert snapshot["schema_version"] == 1
@@ -150,12 +152,65 @@ def test_unsatisfiable_has_no_side_effects(client, database, monkeypatch):
     assert response.get_json() == {
         "data": {
             "status": "unsatisfiable",
+            "source_revision": 7,
             "message": "Tidak ditemukan jadwal yang memenuhi seluruh aturan.",
             "assignments": [],
         }
     }
     assert rows(database, "SELECT * FROM preview_jadwal") == []
     assert rows(database, "SELECT value FROM system_metadata WHERE key='source_revision'")[0][0] == before_revision
+
+
+def test_elapsed_milliseconds_rounds_to_nearest_and_never_goes_negative():
+    assert scheduling._elapsed_milliseconds(1_000_000, 2_499_999) == 1
+    assert scheduling._elapsed_milliseconds(1_000_000, 2_500_000) == 2
+    assert scheduling._elapsed_milliseconds(2_000_000, 1_000_000) == 0
+
+
+def test_solver_clock_brackets_only_run_solver_and_does_not_publish_partial_diagnostics(
+    client, monkeypatch
+):
+    events = []
+    ticks = iter((10_000_000, 12_500_000))
+
+    def monotonic_ns():
+        events.append("clock")
+        return next(ticks)
+
+    def solver(_payload, _config):
+        assert events == ["clock"]
+        events.append("solver")
+        return dict(SUCCESS)
+
+    monkeypatch.setattr(scheduling.time, "monotonic_ns", monotonic_ns)
+    monkeypatch.setattr(scheduling, "run_solver", solver)
+    response = client.post("/api/v1/jadwal/generate", json={})
+
+    assert response.status_code == 200
+    assert events == ["clock", "solver", "clock"]
+    assert "solver_diagnostics" not in response.get_json()["data"]
+
+
+def test_solver_error_still_closes_internal_timing_window(client, database, monkeypatch):
+    events = []
+    ticks = iter((20_000_000, 21_000_000))
+
+    def monotonic_ns():
+        events.append("clock")
+        return next(ticks)
+
+    def fail(_payload, _config):
+        events.append("solver")
+        raise APIError("SOLVER_TIMEOUT", "Pencarian melewati batas waktu 30 detik.", 504)
+
+    monkeypatch.setattr(scheduling.time, "monotonic_ns", monotonic_ns)
+    monkeypatch.setattr(scheduling, "run_solver", fail)
+    response = client.post("/api/v1/jadwal/generate", json={})
+
+    assert response.status_code == 504
+    assert response.get_json()["error"]["code"] == "SOLVER_TIMEOUT"
+    assert events == ["clock", "solver", "clock"]
+    assert rows(database, "SELECT * FROM preview_jadwal") == []
 
 
 def test_data_not_ready_does_not_call_solver(client, database, monkeypatch):
