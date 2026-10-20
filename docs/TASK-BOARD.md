@@ -8,7 +8,7 @@
 - [x] Finalisasi kontrak REST v1 40 operasi, envelope/status/error, assignment display, transaksi, dan health melalui DEC-043–DEC-059.
 - [x] Finalisasi kontrak backend nested praktikum, sorting/search, timestamp/revision, lifecycle database, dan kebijakan dependency melalui DEC-061–DEC-065 (TASK 10A.1; dokumentasi saja).
 - [x] Finalisasi ambiguitas kontrak scheduling melalui DEC-066: canonical persisted solver result, UUID preview, dan sorting history (TASK 13A.1; dokumentasi saja).
-- [x] Finalisasi kontrak observabilitas solver melalui DEC-067 (TASK 13G.1; dokumentasi saja, fitur tetap PLANNED).
+- [x] Finalisasi kontrak observabilitas solver melalui DEC-067 (TASK 13G.1; kontrak dokumentasi; implementasinya diselesaikan melalui TASK 13G.2–13G.5).
 - [ ] Bertiga review PROJECT-SPEC, DATA-MODEL, AI-RULES, API-CONTRACT dan DECISIONS.
 - [ ] Catat bukti formal izin/persetujuan yang diperlukan dan konfirmasi tanggal deadline; penggunaan Flask/React dinyatakan aman dalam konteks TASK 10A.1, tetapi review tiga anggota belum dianggap selesai.
 - [ ] Sepakati GitHub repo, branch, cara review PR, dan aturan perubahan spesifikasi.
@@ -43,12 +43,14 @@
 - [ ] Review hasil benchmark dan putuskan batas dataset.
 - [ ] Susun tutorial 5 poin dosen, slide, demo, dan video.
 
-## TASK 13G — Observabilitas Solver Studio (PLANNED)
-- [x] TASK 13G.1: finalisasi kontrak dokumentasi observabilitas (DEC-067); belum ada implementasi.
-- [ ] TASK 13G.2: implementasi `wall_time_ms` pada response generate dengan monotonic clock dan uji SAT/UNSAT/error.
-- [ ] TASK 13G.3: implementasi `domain_candidates` dari Prolog CLI output schema v2; adapter memvalidasi lalu memproyeksikan hasil solver v1 untuk persistensi.
-- [ ] TASK 13G.4: implementasi `verification.overall` dari hasil nyata `verify_assignments()`; tanpa matriks per-constraint.
-- [ ] TASK 13G.5: audit regresi response API, batas stream, preview/save/history, seluruh suite backend dan Prolog.
+## TASK 13G — Observabilitas Solver Studio (IMPLEMENTED)
+- [x] TASK 13G.1: finalisasi kontrak dokumentasi observabilitas (DEC-067).
+- [x] TASK 13G.2: implementasi `wall_time_ms` pada response generate dengan monotonic clock dan uji SAT/UNSAT/error.
+- [x] TASK 13G.3: implementasi `domain_candidates` dari Prolog CLI output schema v2; adapter memvalidasi lalu memproyeksikan hasil solver v1 untuk persistensi.
+- [x] TASK 13G.3A: hardening klasifikasi UNSAT dan regresi persistensi v1.
+- [x] TASK 13G.4: implementasi `verification.overall` dari hasil nyata `verify_assignments()`; tanpa matriks per-constraint.
+- [x] TASK 13G.5: audit regresi final observabilitas; PASS WITH NOTES. Tindak lanjut: sinkronisasi status dokumentasi (TASK 13G.6).
+- [x] TASK 13G.6: sinkronisasi status dokumentasi dengan implementasi DEC-067; tidak mengubah fitur atau kontrak.
 
 ## Definition of Done
 Tugas hanya selesai jika: kriteria jelas, kode/review sesuai spesifikasi, tes relevan dijalankan, hasil didokumentasikan, dan PR disetujui. Tidak cukup hanya 'AI bilang selesai'.

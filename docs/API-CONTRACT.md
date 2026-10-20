@@ -1,7 +1,7 @@
 # API-CONTRACT.md
 
 **Versi 1.0-final-dokumentasi | 19 Oktober 2026**
-**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-067; observabilitas solver berstatus PLANNED dan status implementasinya dicatat terpisah.
+**Status:** kontrak REST v1 dan Flask–SWI-Prolog telah difinalisasi pada tingkat dokumentasi melalui DEC-028–DEC-067. Observabilitas solver DEC-067 telah diimplementasikan dan diverifikasi; status pekerjaan frontend tetap dicatat terpisah.
 
 ## 1. Prinsip antarkomponen
 
@@ -704,9 +704,9 @@ Request save untuk contoh 15–18 selalu:
 
 Perubahan kontrak setelah disetujui harus melalui review Iqbal, Zicco, dan Galang.
 
-## 13. Observabilitas solver (PLANNED, DEC-067)
+## 13. Observabilitas solver (IMPLEMENTED, DEC-067)
 
-Fitur pada bagian ini belum diimplementasikan. Endpoint tetap `POST /api/v1/jadwal/generate`; tidak ada endpoint baru. Objek berikut merupakan field aditif pada objek `data` response generate.
+Implementasi pada bagian ini tersedia pada `POST /api/v1/jadwal/generate`; tidak ada endpoint baru. Objek berikut merupakan field aditif pada objek `data` response generate.
 
 ### 13.1 Generate success
 

@@ -1,5 +1,5 @@
 # AI-RULES.md
-**Status:** kontrak input solver versi 1, aturan CSP, dan batas integrasi REST tetap berlaku; mesin SWI-Prolog dan benchmark TASK 07 telah tersedia. DEC-067 merencanakan output CLI observabilitas versi 2; fitur tersebut belum diimplementasikan dan tidak mengubah C01–C09 atau hasil solver v1 yang dipersistenkan.
+**Status:** kontrak input solver versi 1, aturan CSP, dan batas integrasi REST tetap berlaku; mesin SWI-Prolog dan benchmark TASK 07 telah tersedia. Observabilitas DEC-067—termasuk output CLI v2, adapter, dan diagnostik response generate—telah diimplementasikan dan diverifikasi, tanpa mengubah C01–C09 atau hasil solver v1 yang dipersistenkan.
 
 ## Tugas AI
 SWI-Prolog adalah sumber kebenaran keputusan penjadwalan. Untuk setiap kegiatan `praktikum` aktif, pilih tepat satu pasangan `(slot_id, laboratorium_id)` dari data yang valid. `mata_praktikum` adalah katalog dan bukan unit yang dijadwalkan. Flask melakukan validasi format, referensi, status, dan transaksi; **Flask tidak membuat solver alternatif**.
@@ -54,9 +54,9 @@ Slot adalah interval `[jam_mulai, jam_selesai)`. Jika semua slot global tidak ov
 - Prolog berjalan di luar transaksi database. Setelah success, backend wajib membandingkan revision terkini dengan revision input; hasil tidak disimpan sebagai preview bila revision berubah.
 - Tidak ada retry solver otomatis pada MVP.
 
-Input tetap memakai `schema_version: 1`. Output CLI observabilitas yang direncanakan memakai schema versi 2 untuk success/unsatisfiable agar ringkasan domain kandidat dapat dibawa sebagai field protokol strict tanpa mengubah semantik status, exit code, atau bentuk assignment. Adapter memvalidasi output v2 dan membentuk proyeksi solver response v1 tanpa diagnostik untuk persistensi sesuai DEC-066. Exit code tetap 0 hanya untuk success/unsatisfiable, 2 untuk invalid_input, dan 3 untuk internal_error. Detail shape, stream limits, dan klasifikasi adapter mengacu pada `API-CONTRACT.md` §5.7 dan §13.
+Input tetap memakai `schema_version: 1`. Output CLI observabilitas versi 2 untuk success/unsatisfiable membawa ringkasan domain kandidat dengan validasi protokol strict tanpa mengubah semantik status, exit code, atau bentuk assignment. Adapter memvalidasi output v2 dan membentuk proyeksi solver response v1 tanpa diagnostik untuk persistensi sesuai DEC-066. Exit code tetap 0 hanya untuk success/unsatisfiable, 2 untuk invalid_input, dan 3 untuk internal_error. Detail shape, stream limits, dan klasifikasi adapter mengacu pada `API-CONTRACT.md` §5.7 dan §13.
 
-Pada generate success, observabilitas terencana mengukur wall-clock round-trip Flask `run_solver()` dengan monotonic clock, menghasilkan kandidat domain awal dari Prolog sebelum constraint konflik antar-kegiatan, dan hanya melaporkan `verification.overall: passed` setelah verifier konkret C01–C09 berhasil. Pada UNSAT verifikasi assignment adalah `not_applicable`. Diagnostik tidak mengubah SAT/UNSAT, algoritma CSP, strategi labeling, atau menjadi klaim jumlah solusi/langkah pencarian. Implementasinya berstatus PLANNED menurut DEC-067.
+Pada generate success, implementasi mengukur wall-clock round-trip Flask `run_solver()` dengan monotonic clock, menghasilkan kandidat domain awal dari Prolog sebelum constraint konflik antar-kegiatan, dan hanya melaporkan `verification.overall: passed` setelah verifier konkret C01–C09 berhasil. Pada UNSAT verifikasi assignment adalah `not_applicable`. Domain kandidat menggambarkan ukuran domain awal per kegiatan, bukan search trace, propagation count, backtracking count, atau jumlah solusi. Diagnostik tidak mengubah SAT/UNSAT, algoritma CSP, atau strategi labeling. Implementasi DEC-067 telah diverifikasi melalui TASK 13G.5.
 
 ## Konsistensi hasil dan snapshot
 
