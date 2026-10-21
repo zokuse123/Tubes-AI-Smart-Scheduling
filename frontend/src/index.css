@@ -7,32 +7,42 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.985 0.003 80);
-  --foreground: oklch(0.19 0.01 65);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.01 65);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.01 65);
-  --primary: oklch(0.56 0.14 67);
-  --primary-foreground: oklch(0.99 0.01 85);
-  --secondary: oklch(0.95 0.008 75);
-  --secondary-foreground: oklch(0.25 0.01 65);
-  --muted: oklch(0.95 0.008 75);
-  --muted-foreground: oklch(0.5 0.015 65);
-  --accent: oklch(0.94 0.045 82);
-  --accent-foreground: oklch(0.29 0.06 65);
-  --destructive: oklch(0.58 0.22 28);
-  --border: oklch(0.9 0.008 75);
-  --input: oklch(0.9 0.008 75);
-  --ring: oklch(0.66 0.13 68);
-  --chart-1: oklch(0.65 0.15 65);
-  --chart-2: oklch(0.58 0.09 155);
-  --chart-3: oklch(0.43 0.06 230);
-  --chart-4: oklch(0.78 0.15 90);
-  --chart-5: oklch(0.68 0.16 35);
-  --radius: 0.75rem;
-  --font-sans: "Geist Variable", sans-serif;
-  --font-mono: "JetBrains Mono Variable", monospace;
+  color-scheme: light;
+  /* Stitch: charcoal #2e3134, amber #d99a32, primary #815600.
+     The canvas is intentionally warmer than the reference's #f8f9fd. */
+  --background: #faf9f6;
+  --foreground: #191c1f;
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: #815600;
+  --primary-foreground: #ffffff;
+  --secondary: #eceae5;
+  --secondary-foreground: #45474a;
+  --muted: #f2f1ed;
+  --muted-foreground: #6d6256;
+  --accent: #fff2dc;
+  --accent-foreground: #624000;
+  --success: #006c44;
+  --success-muted: #e4f5eb;
+  --destructive: #ba1a1a;
+  --destructive-muted: #ffdad6;
+  --border: #e3ded6;
+  --input: #d5c4b0;
+  --ring: var(--primary);
+  --sidebar: #2e3134;
+  --sidebar-foreground: #eff1f5;
+  --sidebar-muted: #b8babd;
+  --sidebar-border: #46494c;
+  --sidebar-hover: #3b3e41;
+  --sidebar-accent: #d99a32;
+  --sidebar-accent-foreground: #291800;
+  --sidebar-ring: #feba50;
+  --overlay: #191c1f;
+  --radius: 0.5rem;
+  --font-ui: "Geist Variable", "Segoe UI", sans-serif;
+  --font-code: "JetBrains Mono Variable", Consolas, monospace;
 }
 
 @theme inline {
@@ -54,17 +64,24 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-destructive-muted: var(--destructive-muted);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-overlay: var(--overlay);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
 }
 
 @layer base {
@@ -73,7 +90,7 @@
   }
 
   body {
-    @apply bg-background font-sans text-foreground;
+    @apply bg-background font-sans text-sm text-foreground antialiased;
     margin: 0;
     min-width: 320px;
     min-height: 100vh;
