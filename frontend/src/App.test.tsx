@@ -1,7 +1,9 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createAppQueryClient } from '@/api/queryClient'
 import App from '@/App'
 
 const pages = [
@@ -13,12 +15,19 @@ const pages = [
   { path: '/schedule-history', title: 'Schedule History', link: 'Schedule History' },
 ]
 
+const clients: ReturnType<typeof createAppQueryClient>[] = []
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ data: [], meta: { page: 1, page_size: 20, total_items: 0, total_pages: 0 } }), { status: 200 }))))
+})
 function renderPage(path = '/') {
-  return render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
+  const client = createAppQueryClient()
+  clients.push(client)
+  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>)
 }
 
 afterEach(() => {
   cleanup()
+  clients.splice(0).forEach((client) => client.clear())
   vi.unstubAllGlobals()
 })
 
@@ -138,13 +147,13 @@ describe('mobile navigation', () => {
 })
 
 describe('honest feature placeholders', () => {
-  it.each(pages)('$path discloses the unavailable state without business data or API calls', ({ path }) => {
+  it.each(pages.filter((page) => page.path !== '/data-master'))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     renderPage(path)
     const main = screen.getByRole('main')
     expect(within(main).getAllByText('Fitur belum tersedia pada tahap F03').length).toBeGreaterThan(0)
-    expect(screen.getByText('API belum dihubungkan')).toBeInTheDocument()
+    expect(screen.getByText('Workspace lokal')).toBeInTheDocument()
     expect(within(main).queryByRole('table')).not.toBeInTheDocument()
     expect(main.querySelector('input, select, time')).toBeNull()
     expect(within(main).queryByRole('button')).not.toBeInTheDocument()

@@ -1,6 +1,6 @@
 # Smart Lab Scheduling System — Frontend
 
-React + TypeScript application scaffolded with Vite. F03 provides the shared shell, six placeholder routes, and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. Feature UI integration is deferred; the placeholders make no API requests.
+React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. The other five feature routes remain placeholders without automatic API requests.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Master methods map to GET collection/detail, POST collection, PATCH detail, and 
 import { kelompokApi } from '@/api/services/master'
 import { queryKeys } from '@/api/queryKeys'
 
-// Future feature usage with useQuery; do not add this to F03 placeholders.
+// Pattern used by feature queries; keep unfinished placeholders request-free.
 const options = {
   queryKey: queryKeys.master.list('kelompok', { page: 1, is_active: 'true' }),
   queryFn: ({ signal }: { signal: AbortSignal }) =>
@@ -71,6 +71,16 @@ After successful feature mutations, call the scoped helpers in `api/invalidation
 - `invalidateAfterSave(client)` refreshes active/history reads. It retains existing cached data while invalidating it; it does not clear unrelated master data.
 
 Entity responses do not expose whether revision changed. These helpers conservatively refresh schedule reads even for no-ops; they do not infer invalidation or rewrite server state. F07 must handle in-memory preview expiry/staleness separately. Do not persist previews in browser storage.
+
+## Data Master (F05)
+
+Run Flask separately using the root README instructions. `/data-master` uses the six F04 master services for server-paginated list/detail, create, partial PATCH, and confirmed activation/deactivation. There is no DELETE or optimistic mutation. Search is available only on the four named resources; status and common ID/timestamp sorting are server-side. Leaving a resource cancels its read requests.
+
+Forms use React Hook Form and Zod, with backend validation authoritative. Participant counts and capacities must be positive safe integers. Slots use weekdays 1–5, `HH:MM`, and a same-day duration of 120 minutes; overlap is checked by Flask/SQLite. Praktikum choices are fetched from every page of the active reference catalogs, never hardcoded. An unchanged existing inactive FK can be retained during partial edit, but replacements must be active. Empty or failed reference catalogs block creation and provide guidance/retry.
+
+Successful mutations invalidate scoped F04 query keys, including related nested Praktikum summaries and schedule reads. The page does not claim that a schedule became invalid from a master response, because that response does not expose schedule status. Unchanged edits send no PATCH. Activation does not imply dataset readiness or restore invalid schedules.
+
+UI tests use mocked network responses and exercise all six resources, errors/retry, validation, pagination, reference catalogs, request cancellation, focus restoration, and scoped cache invalidation. HTTP integration was also checked with real Flask and an isolated temporary SQLite database using the actual F04 services; this is not browser E2E. Never use the main development database for automated mutation smoke tests.
 
 ## Scheduling and errors
 

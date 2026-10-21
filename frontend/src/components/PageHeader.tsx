@@ -1,8 +1,8 @@
 import { Badge } from '@/components/ui/badge'
 
-type PageHeaderProps = { title: string; description: string; section: string }
+type PageHeaderProps = { title: string; description: string; section: string; badge?: string }
 
-export function PageHeader({ title, description, section }: PageHeaderProps) {
+export function PageHeader({ title, description, section, badge = 'F03 · Pratinjau antarmuka' }: PageHeaderProps) {
   return (
     <div className="mb-6 flex flex-col items-start justify-between gap-4 xl:flex-row xl:items-end">
       <div>
@@ -10,7 +10,7 @@ export function PageHeader({ title, description, section }: PageHeaderProps) {
         <h1 className="text-[1.75rem] leading-tight font-semibold tracking-[-0.025em] sm:text-3xl">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
-      <Badge className="shrink-0" tone="accent">F03 · Pratinjau antarmuka</Badge>
+      <Badge className="shrink-0" tone="accent">{badge}</Badge>
     </div>
   )
 }

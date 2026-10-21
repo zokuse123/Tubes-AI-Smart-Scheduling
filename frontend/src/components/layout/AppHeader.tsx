@@ -19,7 +19,7 @@ export function AppHeader({ title }: { title: string }) {
           <span className="truncate text-muted-foreground">{title}</span>
         </div>
       </div>
-      <Badge className="shrink-0">UI / F03</Badge>
+      <Badge className="shrink-0">LOCAL</Badge>
     </header>
   )
 }

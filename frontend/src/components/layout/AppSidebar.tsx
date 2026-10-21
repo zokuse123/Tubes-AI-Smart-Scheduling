@@ -1,4 +1,4 @@
-import { FlaskConical, Unplug } from 'lucide-react'
+import { FlaskConical, Monitor } from 'lucide-react'
 import { Link, useLocation } from 'react-router'
 import { findNavigationItem, navigation } from '@/app/navigation'
 import { cn } from '@/lib/utils'
@@ -52,9 +52,9 @@ export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
 
       <div className="shrink-0 border-t border-sidebar-border p-4">
         <div className="flex items-start gap-2 rounded-md bg-sidebar-hover px-3 py-2.5 text-sidebar-muted">
-          <Unplug size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <Monitor size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           <div>
-            <p className="font-mono text-[10px] font-medium text-sidebar-foreground">API belum dihubungkan</p>
+            <p className="font-mono text-[10px] font-medium text-sidebar-foreground">Workspace lokal</p>
             <p className="mt-1 text-[11px] leading-4">Antarmuka dalam pengembangan.</p>
           </div>
         </div>
