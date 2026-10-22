@@ -1,10 +1,10 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createAppQueryClient } from '@/api/queryClient'
-import App from '@/App'
+import { appRoutes } from '@/app/routes'
 
 const pages = [
   { path: '/', title: 'Overview', link: 'Overview' },
@@ -22,7 +22,7 @@ beforeEach(() => {
 function renderPage(path = '/') {
   const client = createAppQueryClient()
   clients.push(client)
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: [path] })} /></QueryClientProvider>)
 }
 
 afterEach(() => {
@@ -147,7 +147,7 @@ describe('mobile navigation', () => {
 })
 
 describe('honest feature placeholders', () => {
-  it.each(pages.filter((page) => page.path !== '/data-master'))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
+  it.each(pages.filter((page) => !['/data-master', '/availability'].includes(page.path)))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     renderPage(path)

@@ -2,7 +2,8 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { isCancelledError, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import App from '@/App'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { appRoutes } from '@/app/routes'
 import { AppProviders } from '@/app/providers'
 import { invalidateAfterAvailabilityMutation, invalidateAfterMasterMutation, invalidateAfterSave } from '../invalidation'
 import { createAppQueryClient } from '../queryClient'
@@ -156,13 +157,13 @@ describe('query runtime and provider', () => {
   })
 
   it.each([
-    ['/', 'Overview'], ['/availability', 'Resource Availability'],
+    ['/', 'Overview'],
     ['/constraint-studio', 'Constraint Studio'], ['/timetable', 'Timetable'], ['/schedule-history', 'Schedule History'],
   ])('opens the actual provider and %s placeholder without API calls', async (path, title) => {
     const fetch = vi.fn<typeof globalThis.fetch>()
     vi.stubGlobal('fetch', fetch)
     window.history.replaceState({}, '', path)
-    render(<AppProviders><App /></AppProviders>)
+    render(<AppProviders><RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: [path] })} /></AppProviders>)
     await act(async () => { await Promise.resolve() })
     expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalled()

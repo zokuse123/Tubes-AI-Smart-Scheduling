@@ -1,6 +1,6 @@
 # Smart Lab Scheduling System — Frontend
 
-React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. The other five feature routes remain placeholders without automatic API requests.
+React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. The other four feature routes remain placeholders without automatic API requests.
 
 ## Requirements
 
@@ -81,6 +81,18 @@ Forms use React Hook Form and Zod, with backend validation authoritative. Partic
 Successful mutations invalidate scoped F04 query keys, including related nested Praktikum summaries and schedule reads. The page does not claim that a schedule became invalid from a master response, because that response does not expose schedule status. Unchanged edits send no PATCH. Activation does not imply dataset readiness or restore invalid schedules.
 
 UI tests use mocked network responses and exercise all six resources, errors/retry, validation, pagination, reference catalogs, request cancellation, focus restoration, and scoped cache invalidation. HTTP integration was also checked with real Flask and an isolated temporary SQLite database using the actual F04 services; this is not browser E2E. Never use the main development database for automated mutation smoke tests.
+
+## Resource Availability (F06)
+
+`/availability` loads every page of active groups/assistants and the slot catalog through F04 services. Choose an owner explicitly; opening the page never performs a mutation. Slots are grouped only by days actually present, sorted by start/end time and ID, and rendered as keyboard-accessible checkboxes. Nonactive slots remain visible but disabled. Stored nonactive or missing slot IDs are disclosed and require explicit removal; they are never silently filtered from a draft.
+
+An empty allowlist means unavailable, not all slots available. Save sends the complete sorted unique `slot_ids` array through PUT, including `[]` when explicitly cleared. The server response establishes the new baseline before scoped owner/schedule invalidation. There are no optimistic updates or automatic mutation retries. Success messages do not infer schedule invalidation from an availability response.
+
+Server baseline and local draft are separate, with set-based dirty checking. Reset uses the most recently received server data. Refetch does not overwrite a draft: changed server data is disclosed and requires explicit acceptance before another save. Switching owner/type with unsaved changes requires confirmation. The app now uses React Router's existing data-router API (`createBrowserRouter`/`RouterProvider`) and `useBlocker`, covering internal links and history navigation. `AppProviders` owns QueryClient only; production router setup is in `main.tsx`, with shared route definitions in `app/routes.tsx`. Reload/close warnings use `beforeunload` only while dirty or saving; browser policy controls whether a generic dialog appears and does not allow custom warning text.
+
+Owner/catalog refresh errors preserve the draft and block writes until data can be verified. Active owner membership is checked again immediately before PUT, although the backend itself permits inactive-owner availability operations. This is a UI safety check, not a lock: without an availability version token, concurrent edits remain last-write-wins and a deactivation can still race the preflight. HTTP/network failures may have an uncertain mutation outcome; never assume cancellation rolled back a write.
+
+Component tests exercise GET/PUT, pagination, empty/error/retry states, full replacement, navigation blocking, late responses, stale catalogs, draft preservation, keyboard interaction, and targeted invalidation. Real Flask GET/PUT/CORS integration is checked against an isolated disposable SQLite database, not the main database. These checks are not browser E2E. Availability does not implement Constraint Studio, Timetable, History, or Overview.
 
 ## Scheduling and errors
 
