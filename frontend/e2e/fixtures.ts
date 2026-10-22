@@ -13,6 +13,7 @@ export const test = base.extend<{ isolatedSystem: IsolatedSystem; audit: Browser
   audit: [async ({ page, isolatedSystem }, run) => {
     expect(isolatedSystem.database).toContain('smart-lab-e2e-')
     const audit = observeBrowser(page)
+    page.context().on('page', (secondary) => observeBrowser(secondary, audit))
     await run(audit)
     expect(audit.unexpected).toEqual([])
     expect(audit.pending).toEqual([])

@@ -55,7 +55,32 @@ The smoke checks shell/navigation, all six routes, real healthy response and com
 
 All dataset creation, updates, status changes, availability PUTs, generate and save operations come from actual UI interactions. No API interception, mocks, fixed IDs, or manually inserted assignments are used. An automatic browser audit matches every mutation against the method/path/body registered immediately before its UI action, rejects unexpected/duplicate writes and wrong API targets, and checks page/console errors. Read-only GETs reuse F04 DTO schemas. A bounded Python `mode=ro` SQLite reader additionally checks the temporary database's preview v1 result, separate snapshot, consumed states, version statuses, and immutable JSON. The real solver remains the backend's normal subprocess path; no test override is supplied.
 
-The F11-B infrastructure safety tests remain available via `npm run test:e2e:infra`. E2E helper/config typechecking uses bundler module resolution so the tests can import the same extensionless DTO modules as the app. This does not emit or change production source. Broad negative/concurrency coverage, accessibility/performance polishing, and final demo readiness remain F11-D/F11-E/F11-F.
+The F11-B infrastructure safety tests remain available via `npm run test:e2e:infra`. E2E helper/config typechecking uses bundler module resolution so the tests can import the same extensionless DTO modules as the app. This does not emit or change production source. Accessibility/performance polishing and final demo readiness remain F11-E/F11-F.
+
+## Failure, lifecycle and concurrency tests (F11-D)
+
+`npm run test:e2e` also runs 20 negative/recovery cases, explicitly named by evidence layer. `negative-lifecycle.spec.ts` uses actual solver/HTTP results; `network-failures.spec.ts` uses controlled network faults; `races.spec.ts` delays captured real responses, never inventing assignments or solver results. Combined with F11-B/C there are 26 browser cases.
+
+| Area | Evidence |
+|---|---|
+| D01 UNSAT | Valid shared-group/two-assistant/two-lab/single-slot dataset, generated through real Prolog; initial domains remain present, no preview/version is persisted. |
+| D02 stale | A second browser page edits a live label; the old preview is rejected and persisted stale, while the previously saved active version remains valid. Recovery requires explicit regenerate. |
+| D03 consumed | One UI save followed by a deliberately controlled real HTTP replay; consumed rejection leaves exactly one version. |
+| D04 expiry/not-found | Real canonical unknown UUID returns not-found. Synthetic UI terminal errors verify recovery without forwarding a save. Browser-clock expiry is UI-only. Actual backend TTL is proven separately with real-solver previews and controlled backend UTC, at one millisecond before and exactly at expiry. |
+| D05 faults | GET/generate/save aborts, degraded health 503, malformed JSON, invalid DTO, history detail 404, marked stale cache and preserved availability draft with explicit retry. |
+| D06 uncertain save | `route.fetch({maxRetries:0})` forwards the actual save once; SQLite consumed/version/details and independent GET prove commit BEFORE the browser response is aborted. UI withdraws certainty, does not retry, and can inspect the single saved result through Timetable/History. |
+| D07 races | Real old GET/generate responses are held behind promise gates until newer results are visible; delayed save does not confirm prematurely. Availability navigation/POP guard, Forward and clean reload are tested. |
+| D08 atomicity | Two concurrent real HTTP saves consume one preview once. Backend event/barrier tests cover both mutation-versus-save orders; an added test pauses replacement after inserts but before commit and proves active/history readers still see the old committed version. |
+
+All fault routes are test-local. Browser audit permits only the browser's `Failed to load resource:` messages at explicitly registered failing API paths; other console errors, page errors, wrong targets and unexpected/duplicate mutations remain failures. Gates propagate route assertion failures to the test; no random sleeps or `waitForTimeout` are used. UI terminal-error injection does not pretend to expire/delete a backend preview. Real persistence is checked independently and the evidence layers must not be conflated.
+
+From the repository root, run the time/transaction-focused backend coverage with:
+
+```powershell
+python -B -m pytest backend/tests/test_e2e_failure_guarantees.py backend/tests/test_schedule_save.py backend/tests/test_schedule_read.py -q -p no:cacheprovider
+```
+
+`test_e2e_failure_guarantees.py` reuses temporary-database fixtures but replaces their solver stub with the actual adapter; it skips explicitly when SWI-Prolog is unavailable. Clock/transaction pauses exist only in pytest monkeypatches, not production hooks. The unchanged per-test environment, port guard, process ownership and safe cleanup apply to every real and fault-injected browser case.
 
 ## Local development
 

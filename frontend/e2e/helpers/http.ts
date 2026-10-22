@@ -6,14 +6,20 @@ import { successSchema } from '../../src/api/types/common'
 import { apiUrl } from '../system.ts'
 
 type Intent = { method: string; path: string; payload: unknown }
-export type BrowserAudit = { pending: Intent[]; writes: Intent[]; unexpected: string[]; pageErrors: string[]; consoleErrors: string[] }
+export type BrowserAudit = { pending: Intent[]; writes: Intent[]; unexpected: string[]; pageErrors: string[]; consoleErrors: string[]; expectedFailurePaths: Set<string>; observedNetworkErrors: string[] }
 const audits = new WeakMap<Page, BrowserAudit>()
 
-export function observeBrowser(page: Page): BrowserAudit {
-  const audit: BrowserAudit = { pending: [], writes: [], unexpected: [], pageErrors: [], consoleErrors: [] }
+export function observeBrowser(page: Page, shared?: BrowserAudit): BrowserAudit {
+  const audit: BrowserAudit = shared ?? { pending: [], writes: [], unexpected: [], pageErrors: [], consoleErrors: [], expectedFailurePaths: new Set(), observedNetworkErrors: [] }
   audits.set(page, audit)
   page.on('pageerror', (error) => audit.pageErrors.push(error.message))
-  page.on('console', (message) => { if (message.type() === 'error') audit.consoleErrors.push(message.text()) })
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    let path = ''
+    try { path = new URL(message.location().url).pathname } catch { /* Unlocated errors remain unexpected. */ }
+    if (audit.expectedFailurePaths.has(path) && message.text().startsWith('Failed to load resource:')) audit.observedNetworkErrors.push(message.text())
+    else audit.consoleErrors.push(message.text())
+  })
   page.on('request', (request) => {
     if (!new URL(request.url()).pathname.startsWith('/api/')) return
     if (!request.url().startsWith(`${apiUrl}/`)) audit.unexpected.push(`Wrong backend: ${request.url()}`)
@@ -27,6 +33,24 @@ export function observeBrowser(page: Page): BrowserAudit {
     } else audit.pending.shift()
   })
   return audit
+}
+
+export function expectNetworkFailure(page: Page, path: string) {
+  const audit = audits.get(page)
+  if (!audit) throw new Error('Browser audit fixture is required')
+  audit.expectedFailurePaths.add(`/api/v1/${path}`)
+}
+
+/** For aborted/delayed responses: synchronize on the actual outgoing UI request. */
+export async function startUIWrite(page: Page, method: string, path: string, payload: unknown, action: () => Promise<unknown>) {
+  const audit = audits.get(page)
+  if (!audit) throw new Error('Browser audit fixture is required')
+  audit.pending.push({ method, path, payload })
+  const pending = page.waitForRequest((request) => request.url() === `${apiUrl}/${path}` && request.method() === method)
+  await action()
+  const request = await pending
+  expect(request.postDataJSON()).toEqual(payload)
+  return request
 }
 
 /** Register ONE expected write immediately before a real UI action, never intercept. */
