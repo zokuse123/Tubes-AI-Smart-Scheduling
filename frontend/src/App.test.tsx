@@ -146,18 +146,15 @@ describe('mobile navigation', () => {
   })
 })
 
-describe('honest feature placeholders', () => {
-  it.each(pages.filter((page) => page.path === '/'))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    renderPage(path)
+describe('read-only overview route', () => {
+  it('replaces the placeholder with independent read-only summaries', () => {
+    renderPage('/')
     const main = screen.getByRole('main')
-    expect(within(main).getAllByText('Fitur belum tersedia pada tahap F03').length).toBeGreaterThan(0)
+    expect(within(main).getByRole('region', { name: 'System Health' })).toBeInTheDocument()
     expect(screen.getByText('Workspace lokal')).toBeInTheDocument()
     expect(within(main).queryByRole('table')).not.toBeInTheDocument()
-    expect(main.querySelector('input, select, time')).toBeNull()
-    expect(within(main).queryByRole('button')).not.toBeInTheDocument()
+    expect(main.querySelector('input, select')).toBeNull()
+    expect(within(main).getByRole('navigation', { name: 'Alur kerja penjadwalan' })).toBeInTheDocument()
     expect(main.textContent).not.toMatch(/SATISFIABLE|UNSATISFIABLE|PUBLISHED|Semester Ganjil|KLP-\d+|2024\/2025/)
-    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

@@ -1,6 +1,12 @@
 # Smart Lab Scheduling System — Frontend
 
-React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. F07 connects `/constraint-studio` for explicit generate, preview, diagnostics, and save. F08 connects `/timetable` for read-only active schedule grid/table views. F09 connects `/schedule-history` for version lists and immutable snapshot detail. Overview remains a placeholder without automatic API requests.
+React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. F07 connects `/constraint-studio` for explicit generate, preview, diagnostics, and save. F08 connects `/timetable` for read-only active schedule grid/table views. F09 connects `/schedule-history` for version lists and immutable snapshot detail. F10 connects `/` to read-only health, master counts, active schedule, and latest history summaries.
+
+## Overview (F10)
+
+Overview makes 21 bounded GET requests on mount: 18 master collections (six resources with `is_active=all|true|false`, `page=1&page_size=1`), health, active schedule, and history (`page=1&page_size=1&sort_by=created_at&sort_order=desc&status=all`). All counts use `meta.total_items`, never page length or subtraction. Counts are independent reads, not an atomic aggregate snapshot. F04 query keys and mutation invalidation are reused. No detail N+1 queries, polling, automatic retries, scheduling, or writes occur on Overview.
+
+Each section retains independent loading/error/retry state; Refresh dashboard refetches only its queries without clearing unrelated caches. Cached results during refresh or after failure are marked unconfirmed. HTTP 503 health data remains degraded, unlike an unknown network state. Empty active/history responses are distinct from failures. Health and resource counts do not prove CSP readiness, capacity, availability, or SAT. Workflow cards only navigate. F11 browser integration/polishing remains separate.
 
 ## Requirements
 

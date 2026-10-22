@@ -156,15 +156,16 @@ describe('query runtime and provider', () => {
     expect(observed[2]?.getDefaultOptions().mutations?.retry).toBe(false)
   })
 
-  it.each([
-    ['/', 'Overview'],
-  ])('opens the actual provider and %s placeholder without API calls', async (path, title) => {
-    const fetch = vi.fn<typeof globalThis.fetch>()
+  it('opens Overview under the actual provider using only bounded GET requests', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      return f.jsonResponse(url.pathname.endsWith('/health') ? { data: f.health } : url.pathname.endsWith('/jadwal/aktif') ? { data: null } : { data: [], meta: { ...f.meta, total_items: 0, total_pages: 0 } })
+    })
     vi.stubGlobal('fetch', fetch)
-    window.history.replaceState({}, '', path)
-    render(<AppProviders><RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: [path] })} /></AppProviders>)
+    render(<AppProviders><RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: ['/'] })} /></AppProviders>)
     await act(async () => { await Promise.resolve() })
-    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(21)
+    expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
   })
 })
