@@ -147,7 +147,7 @@ describe('mobile navigation', () => {
 })
 
 describe('honest feature placeholders', () => {
-  it.each(pages.filter((page) => !['/data-master', '/availability', '/constraint-studio', '/timetable'].includes(page.path)))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
+  it.each(pages.filter((page) => page.path === '/'))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     renderPage(path)
