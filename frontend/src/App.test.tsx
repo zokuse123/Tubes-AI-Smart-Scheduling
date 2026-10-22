@@ -17,7 +17,7 @@ const pages = [
 
 const clients: ReturnType<typeof createAppQueryClient>[] = []
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ data: [], meta: { page: 1, page_size: 20, total_items: 0, total_pages: 0 } }), { status: 200 }))))
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((input) => Promise.resolve(new Response(JSON.stringify(String(input).endsWith('/jadwal/aktif') ? { data: null } : { data: [], meta: { page: 1, page_size: 20, total_items: 0, total_pages: 0 } }), { status: 200 }))))
 })
 function renderPage(path = '/') {
   const client = createAppQueryClient()
@@ -147,7 +147,7 @@ describe('mobile navigation', () => {
 })
 
 describe('honest feature placeholders', () => {
-  it.each(pages.filter((page) => !['/data-master', '/availability', '/constraint-studio'].includes(page.path)))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
+  it.each(pages.filter((page) => !['/data-master', '/availability', '/constraint-studio', '/timetable'].includes(page.path)))('$path discloses the unavailable state without business data or API calls', ({ path }) => {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     renderPage(path)

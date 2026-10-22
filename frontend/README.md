@@ -1,6 +1,6 @@
 # Smart Lab Scheduling System — Frontend
 
-React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. F07 connects `/constraint-studio` for explicit generate, preview, diagnostics, and save. The other three feature routes remain placeholders without automatic API requests.
+React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. F07 connects `/constraint-studio` for explicit generate, preview, diagnostics, and save. F08 connects `/timetable` for read-only active schedule grid/table views. Overview and Schedule History remain placeholders without automatic API requests.
 
 ## Requirements
 
@@ -70,7 +70,7 @@ After successful feature mutations, call the scoped helpers in `api/invalidation
 - `invalidateAfterAvailabilityMutation(client, ownerType, id)` refreshes only that availability owner and schedule reads.
 - `invalidateAfterSave(client)` refreshes active/history reads. It retains existing cached data while invalidating it; it does not clear unrelated master data.
 
-Entity responses do not expose whether revision changed. These helpers conservatively refresh schedule reads even for no-ops; they do not infer invalidation or rewrite server state. F07 must handle in-memory preview expiry/staleness separately. Do not persist previews in browser storage.
+Entity responses do not expose whether revision changed. These helpers conservatively refresh schedule reads even for no-ops; they do not infer invalidation or rewrite server state. Constraint Studio handles in-memory preview expiry/staleness separately. Do not persist previews in browser storage.
 
 ## Data Master (F05)
 
@@ -104,9 +104,21 @@ Generate and Save are separate non-retrying mutations. Save sends only the actua
 
 Preview timestamps are displayed as backend UTC. A local one-second clock (no network polling) disables save after `expires_at` according to the device and refreshes on visibility change. This is only an expiry hint: backend time and revision checks remain authoritative, and an incorrect device clock may disable save prematurely. There is no invented countdown or client-side revision authority.
 
-Confirmed save displays the returned version ID/status/revision and invalidates only active/history reads through the F04 helper. It removes the used preview from the local save path. `PREVIEW_EXPIRED`, `STALE_PREVIEW`, `PREVIEW_CONSUMED`, and `PREVIEW_NOT_FOUND` discard the local preview and require an explicit new generate. Known backend rejections such as `DATABASE_BUSY` retain the preview for an explicit retry if it has not expired. Transport, parsing, or protocol failures during save have an uncertain outcome: no success is claimed, no automatic retry occurs, and the local preview is no longer saveable. The user must verify persisted scheduling state before retrying an uncertain operation; Timetable/History UI integration remains deferred to F08/F09.
+Confirmed save displays the returned version ID/status/revision and invalidates only active/history reads through the F04 helper. It removes the used preview from the local save path. `PREVIEW_EXPIRED`, `STALE_PREVIEW`, `PREVIEW_CONSUMED`, and `PREVIEW_NOT_FOUND` discard the local preview and require an explicit new generate. Known backend rejections such as `DATABASE_BUSY` retain the preview for an explicit retry if it has not expired. Transport, parsing, or protocol failures during save have an uncertain outcome: no success is claimed, no automatic retry occurs, and the local preview is no longer saveable. The user must verify persisted scheduling state before retrying an uncertain operation. Timetable reads the current active version; History UI integration remains deferred to F09.
 
 Component tests cover StrictMode idle behavior, SAT/UNSAT/errors, nested display and ID fallbacks, diagnostics, keyboard interaction, expiry, single-flight requests, late responses, regeneration, and targeted invalidation. Flask/SQLite/SWI-Prolog integration is checked on a disposable temporary database using the actual F04 services. HTTP tests and mocked component tests are not browser E2E.
+
+## Active Timetable (F08)
+
+`/timetable` uses only `scheduleApi.active()` and `queryKeys.schedules.active()`. It never calls generate/save, mutates master data, fetches catalogs, or substitutes an F07 preview for a persisted schedule. GET active returns an active version or `null`; invalid/archived versions are not active responses. An unexpected nonactive response is rejected by the existing F04 DTO validator.
+
+Both Grid and Tabel use the same locally filtered snapshot assignments. Day, laboratory, and group options come only from that snapshot; filters use IDs, not names, and issue no requests. Sorting is deterministic by day, start/end time, slot ID, laboratory ID, then activity ID. A copied array is sorted; source assignments are not modified. The grid groups actual days and slot identities without inventing blank time periods, break times, equal per-day slot counts, or continuous timeline positions. Parallel activities sharing a slot remain separate cards, including their laboratory and resource IDs. The table includes every matching assignment and scrolls horizontally on narrow screens.
+
+Metadata is limited to returned version ID, status, saved timestamp (`created_at`, UTC), source revision, and backend summary counts. Displayed result counts use the filtered/full assignment lengths. Names and allocation stay exactly as stored, even if live master labels have changed. No utilization/conflict statistics, semester, confidence score, solver duration, or individual constraint PASS results are invented.
+
+Refresh uses the same active query and consumes its cancellation signal. A new version resets version-specific filters; `null` removes the old grid and metadata. Cached data shown while checking/refetching is explicitly unconfirmed. A failed refresh retains the last snapshot with a stale warning and `Status terakhir`, not a claim of current active status. A failed request without cached schedule data is not presented as proof that no active schedule exists. There is no polling; Refresh or the existing F04 invalidation helpers trigger checks, so external changes remain unknown until the next read.
+
+Component tests cover loading/null/errors/retry, parallel rooms, chronological ordering, irregular start times, duplicate assistant names with distinct IDs, grid/table parity, filters, keyboard controls, immutable transformations, cancellation, and refresh to changed/null/stale states. Real Flask/SWI-Prolog integration uses an isolated temporary SQLite database. These are HTTP and mocked component tests, not browser E2E. F08 does not implement History, Overview, export, or print.
 
 ## Scheduling and errors
 
