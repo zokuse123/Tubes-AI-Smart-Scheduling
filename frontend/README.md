@@ -13,6 +13,36 @@ Each section retains independent loading/error/retry state; Refresh dashboard re
 - Node.js 24.13.0
 - npm 11.6.2
 
+## Isolated Chromium infrastructure smoke (F11-B)
+
+This is a real-browser infrastructure smoke, not the full CRUD/SAT lifecycle suite (F11-C). It uses the real React app, Flask, a new empty temporary SQLite database, and the actual solver availability check. No API responses are mocked and no scheduling/mutation requests are made.
+
+Prerequisites: Python 3.14 with `backend/requirements.txt` installed, and SWI-Prolog on PATH (or `SMART_LAB_SWIPL` pointing to its executable). Run from `frontend/`:
+
+```powershell
+npm ci
+npx playwright install chromium
+npm run test:e2e:infra
+npm run test:e2e
+```
+
+`@playwright/test` is an exact-pinned devDependency; Chromium must match that installed Playwright version. Node infrastructure tests are separate from Vitest/jsdom and the Playwright spec. `npm run typecheck` checks both E2E helpers and config. Artifacts (`test-results/`, `playwright-report/`, `blob-report/`) are ignored by Git; traces/screenshots are retained on failure. The initial project uses Chromium, one worker, zero retries, 60-second test timeout, and a bounded startup/teardown fixture.
+
+Close your Vite server on **5173** and any server on **5007** before running. The fixture checks IPv4 and IPv6 and fails instead of reusing or stopping somebody else's server. Other ports, including a user's Flask on 5000, are not managed. Do not run the infra and browser suites concurrently. The one automatic worker fixture owns both server lifecycles; Playwright `webServer` is intentionally not configured.
+
+The fixture creates a unique `smart-lab-e2e-*` directory under the OS temporary directory and runs the existing `backend/db/init_db.py --db-path <absolute temporary path>`. Flask starts through the test-only `e2e/flask_server.py` launcher, which checks the required environment variable and the application's effective `DATABASE` **before binding or serving requests**. No fallback to the main database is allowed. The launcher uses the existing application factory without a debugger/reloader; no backend source or migrations are changed. Vite starts at `http://localhost:5173` with process-local `VITE_API_BASE_URL=http://127.0.0.1:5007/api/v1`, preserving the contracted CORS origin.
+
+If `python` is unavailable, set the executable path (not a shell command) for the test process:
+
+```powershell
+$env:SMART_LAB_E2E_PYTHON = 'C:\path\to\python.exe'
+npm run test:e2e
+```
+
+Startup accepts readiness only after the owned process confirms binding. Shutdown targets only PIDs created by the fixture (Windows uses bounded `taskkill /PID <owned-pid> /T /F`, never process-name or port-based killing). Cleanup also runs after setup/test failures. SQLite, WAL, and SHM are removed only after owned processes stop; unexpected files/symlinks cause a safe failure rather than recursive deletion. The fixture verifies the primary DB SHA256 before/after and checks released ports. Logs identify owned PIDs and the temporary directory for troubleshooting. Abrupt OS termination or force-killing the test runner can still require manual inspection of those exact resources; never delete broad temporary directories or stop unrelated processes.
+
+The smoke checks shell/navigation, all six routes, real healthy response and component values, browser CORS headers, empty master/active/history states, absence of unexpected JavaScript console/page errors, and absence of automatic API mutations or requests to the wrong backend. A healthy result is not proof of SAT and does not run CSP.
+
 ## Local development
 
 ```powershell
