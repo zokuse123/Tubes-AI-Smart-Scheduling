@@ -158,7 +158,7 @@ describe('query runtime and provider', () => {
 
   it.each([
     ['/', 'Overview'],
-    ['/constraint-studio', 'Constraint Studio'], ['/timetable', 'Timetable'], ['/schedule-history', 'Schedule History'],
+    ['/timetable', 'Timetable'], ['/schedule-history', 'Schedule History'],
   ])('opens the actual provider and %s placeholder without API calls', async (path, title) => {
     const fetch = vi.fn<typeof globalThis.fetch>()
     vi.stubGlobal('fetch', fetch)

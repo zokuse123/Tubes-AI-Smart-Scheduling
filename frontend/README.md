@@ -1,6 +1,6 @@
 # Smart Lab Scheduling System — Frontend
 
-React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. The other four feature routes remain placeholders without automatic API requests.
+React + TypeScript application scaffolded with Vite. F03 provides the shared shell and responsive navigation. F04 provides a typed REST client and services for all 40 backend operations. F05 connects `/data-master` to Flask for six master resources. F06 connects `/availability` for group/assistant allowlists. F07 connects `/constraint-studio` for explicit generate, preview, diagnostics, and save. The other three feature routes remain placeholders without automatic API requests.
 
 ## Requirements
 
@@ -93,6 +93,20 @@ Server baseline and local draft are separate, with set-based dirty checking. Res
 Owner/catalog refresh errors preserve the draft and block writes until data can be verified. Active owner membership is checked again immediately before PUT, although the backend itself permits inactive-owner availability operations. This is a UI safety check, not a lock: without an availability version token, concurrent edits remain last-write-wins and a deactivation can still race the preflight. HTTP/network failures may have an uncertain mutation outcome; never assume cancellation rolled back a write.
 
 Component tests exercise GET/PUT, pagination, empty/error/retry states, full replacement, navigation blocking, late responses, stale catalogs, draft preservation, keyboard interaction, and targeted invalidation. Real Flask GET/PUT/CORS integration is checked against an isolated disposable SQLite database, not the main database. These checks are not browser E2E. Availability does not implement Constraint Studio, Timetable, History, or Overview.
+
+## Constraint Studio (F07)
+
+`/constraint-studio` performs no request on mount. Generate Schedule uses `scheduleApi.generate()` with `{}` and shows an indeterminate pending state, SAT preview, UNSAT, or a safe error. The displayed counts, assignments, source revision, and DEC-067 diagnostics come from the actual response. Rule definitions C01–C09 are not per-constraint test results. No readiness totals, progress percentages, search traces, or extra telemetry are fabricated.
+
+Assignments use the nested names/IDs in the generated snapshot; there is no live-catalog lookup, pagination dependency, or risk of replacing historical labels with newer master names. An empty snapshot name is displayed as the original ID with an unavailable-name label. Assignment identity and content are not editable. UNSAT diagnostics use activity IDs when display names are not part of that response.
+
+Generate and Save are separate non-retrying mutations. Save sends only the actual `preview_id`. A synchronous single-flight guard prevents rapid duplicate submissions and overlapping generate/save. Regeneration immediately discards the previous local result. Leaving/unmounting aborts the client request and ignores late callbacks for that page; this does not prove the backend cancelled or rolled back the operation. Preview is kept only in page memory, never browser storage, and is not restored from the mutation cache after remount. No GET-preview endpoint or solver polling is used.
+
+Preview timestamps are displayed as backend UTC. A local one-second clock (no network polling) disables save after `expires_at` according to the device and refreshes on visibility change. This is only an expiry hint: backend time and revision checks remain authoritative, and an incorrect device clock may disable save prematurely. There is no invented countdown or client-side revision authority.
+
+Confirmed save displays the returned version ID/status/revision and invalidates only active/history reads through the F04 helper. It removes the used preview from the local save path. `PREVIEW_EXPIRED`, `STALE_PREVIEW`, `PREVIEW_CONSUMED`, and `PREVIEW_NOT_FOUND` discard the local preview and require an explicit new generate. Known backend rejections such as `DATABASE_BUSY` retain the preview for an explicit retry if it has not expired. Transport, parsing, or protocol failures during save have an uncertain outcome: no success is claimed, no automatic retry occurs, and the local preview is no longer saveable. The user must verify persisted scheduling state before retrying an uncertain operation; Timetable/History UI integration remains deferred to F08/F09.
+
+Component tests cover StrictMode idle behavior, SAT/UNSAT/errors, nested display and ID fallbacks, diagnostics, keyboard interaction, expiry, single-flight requests, late responses, regeneration, and targeted invalidation. Flask/SQLite/SWI-Prolog integration is checked on a disposable temporary database using the actual F04 services. HTTP tests and mocked component tests are not browser E2E.
 
 ## Scheduling and errors
 
