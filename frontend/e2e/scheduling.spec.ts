@@ -110,7 +110,7 @@ test('C04: used-capacity invalidation, repair, v1 invalid / v2 archived / v3 act
   await navigate(page, 'Timetable', '/timetable')
   await expect(page.getByRole('heading', { name: 'Belum ada jadwal aktif', exact: true })).toBeVisible()
   let panel = await openHistoryDetail(page, v1.id)
-  await expect(panel.getByText('invalid', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Tidak Valid', { exact: true })).toBeVisible()
   await updateMaster(page, 'kelompok', dataset.activities[0]!.groupId, { jumlah_peserta: 20 })
   expect(await readActive(page)).toBeNull() // Repair never restores an invalid version.
   const v2 = await savePreview(page, await generateSat(page, 1))
@@ -122,7 +122,7 @@ test('C04: used-capacity invalidation, repair, v1 invalid / v2 archived / v3 act
   expect((await readActive(page))!.id).toBe(v3.id)
   for (const [id, status] of [[v1.id, 'invalid'], [v2.id, 'archived'], [v3.id, 'active']] as const) {
     panel = await openHistoryDetail(page, id)
-    await expect(panel.getByText(status, { exact: true })).toBeVisible()
+    await expect(panel.getByText(({ active: 'Aktif', invalid: 'Tidak Valid', archived: 'Diarsipkan' })[status], { exact: true })).toBeVisible()
   }
   const old = await readHistoryDetail(page, v1.id)
   expect(old.assignments).toEqual(original.assignments)
@@ -145,7 +145,7 @@ test('C05: label edit changes live master/revision but not old snapshot or activ
   await updateMaster(page, 'mata-praktikum', activity.subjectId, { nama: replacement })
   await expect(page.getByRole('table', { name: 'Daftar Mata Praktikum', exact: true }).getByRole('cell', { name: replacement, exact: true })).toBeVisible()
   const panel = await openHistoryDetail(page, saved.id)
-  await expect(panel.getByText('active', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Aktif', { exact: true })).toBeVisible()
   await expect(panel.getByRole('table').getByRole('cell', { name: `${activity.subjectName} · #${activity.subjectId}`, exact: true })).toBeVisible()
   await expect(panel.getByText(replacement, { exact: false })).toHaveCount(0)
   const after = await readHistoryDetail(page, saved.id)

@@ -1,3 +1,5 @@
+import { scheduleStatusLabels } from '@/lib/presentation'
+import { Timestamp } from '@/components/Timestamp'
 import { useState } from 'react'
 import type { ActiveSchedule } from '@/api/types/scheduling'
 import { Badge } from '@/components/ui/badge'
@@ -19,10 +21,10 @@ export function SnapshotView({ schedule, unconfirmed }: { schedule: ActiveSchedu
   const groups = [...new Map(schedule.assignments.map((assignment) => [assignment.kelompok.id, assignment.kelompok])).values()].sort((a, b) => a.id - b.id)
   const filtered = Object.values(filters).some((value) => value !== 'all')
   return <div className="space-y-5">
-    <Card><CardHeader className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{unconfirmed ? 'Snapshot terakhir — belum terkonfirmasi aktif' : 'Jadwal aktif'}</CardTitle><Badge tone={unconfirmed ? 'neutral' : 'success'}>{unconfirmed ? `Status terakhir: ${schedule.status}` : schedule.status}</Badge></CardHeader><CardContent>
+    <Card><CardHeader className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{unconfirmed ? 'Snapshot terakhir — belum terkonfirmasi aktif' : 'Jadwal aktif'}</CardTitle><Badge tone={unconfirmed ? 'neutral' : 'success'}>{unconfirmed ? `Status terakhir: ${scheduleStatusLabels[schedule.status]}` : scheduleStatusLabels[schedule.status]}</Badge></CardHeader><CardContent>
       <dl className="grid gap-5 text-sm sm:grid-cols-2 xl:grid-cols-5">
         <div><dt className="text-xs text-muted-foreground">Versi jadwal</dt><dd className="mt-1 font-mono">#{schedule.id}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Disimpan (UTC)</dt><dd className="mt-1 break-all font-mono text-xs"><time dateTime={schedule.created_at}>{schedule.created_at}</time></dd></div>
+        <div><dt className="text-xs text-muted-foreground">Disimpan (WIB)</dt><dd className="mt-1 break-all font-mono text-xs"><Timestamp value={schedule.created_at} /></dd></div>
         <div><dt className="text-xs text-muted-foreground">Source revision</dt><dd className="mt-1 font-mono">{schedule.source_revision}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Kegiatan (ringkasan backend)</dt><dd className="mt-1 font-mono">{schedule.summary.total_praktikum}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Penempatan (ringkasan backend)</dt><dd className="mt-1 font-mono">{schedule.summary.total_assignment}</dd></div>
@@ -32,8 +34,8 @@ export function SnapshotView({ schedule, unconfirmed }: { schedule: ActiveSchedu
     <Card><CardContent className="flex flex-wrap items-end gap-4">
       <div role="group" aria-label="Mode tampilan" className="flex gap-2"><Button variant={mode === 'grid' ? 'default' : 'outline'} aria-pressed={mode === 'grid'} onClick={() => setMode('grid')}>Grid</Button><Button variant={mode === 'table' ? 'default' : 'outline'} aria-pressed={mode === 'table'} onClick={() => setMode('table')}>Tabel</Button></div>
       <div><label htmlFor="timetable-day" className="mb-1.5 block text-xs font-medium">Hari</label><Select id="timetable-day" value={filters.day} onChange={(event) => setFilters((current) => ({ ...current, day: event.target.value }))}><option value="all">Semua hari</option>{presentDays.map((day) => <option key={day} value={day}>{days[day - 1]}</option>)}</Select></div>
-      <div className="min-w-0 flex-1 sm:min-w-48"><label htmlFor="timetable-lab" className="mb-1.5 block text-xs font-medium">Laboratorium</label><Select id="timetable-lab" value={filters.lab} onChange={(event) => setFilters((current) => ({ ...current, lab: event.target.value }))}><option value="all">Semua laboratorium</option>{labs.map((lab) => <option key={lab.id} value={lab.id}>{referenceLabel(lab)}</option>)}</Select></div>
-      <div className="min-w-0 flex-1 sm:min-w-48"><label htmlFor="timetable-group" className="mb-1.5 block text-xs font-medium">Kelompok</label><Select id="timetable-group" value={filters.group} onChange={(event) => setFilters((current) => ({ ...current, group: event.target.value }))}><option value="all">Semua kelompok</option>{groups.map((group) => <option key={group.id} value={group.id}>{referenceLabel(group)}</option>)}</Select></div>
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-48"><label htmlFor="timetable-lab" className="mb-1.5 block text-xs font-medium">Laboratorium</label><Select id="timetable-lab" value={filters.lab} onChange={(event) => setFilters((current) => ({ ...current, lab: event.target.value }))}><option value="all">Semua laboratorium</option>{labs.map((lab) => <option key={lab.id} value={lab.id}>{referenceLabel(lab)}</option>)}</Select></div>
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-48"><label htmlFor="timetable-group" className="mb-1.5 block text-xs font-medium">Kelompok</label><Select id="timetable-group" value={filters.group} onChange={(event) => setFilters((current) => ({ ...current, group: event.target.value }))}><option value="all">Semua kelompok</option>{groups.map((group) => <option key={group.id} value={group.id}>{referenceLabel(group)}</option>)}</Select></div>
       <Button variant="outline" disabled={!filtered} onClick={() => setFilters(emptyFilters)}>Reset filter</Button>
     </CardContent></Card>
     <p role="status" className="text-xs text-muted-foreground">Menampilkan {assignments.length} dari {schedule.assignments.length} penempatan snapshot.</p>

@@ -108,7 +108,7 @@ describe('six-resource Data Master UI', () => {
     expect(screen.getByRole('tab', { name: label })).toHaveAttribute('aria-selected', 'true')
     await openDetail(user, label, id)
     expect(requests.some((r) => r.path === `${key}/${id}` && r.method === 'GET')).toBe(true)
-    expect(screen.getByText('Dibuat (UTC)')).toBeInTheDocument()
+    expect(screen.getByText('Dibuat (WIB)')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /hapus|delete/i })).not.toBeInTheDocument()
     expect(requests.every((r) => r.method === 'GET')).toBe(true)
   })

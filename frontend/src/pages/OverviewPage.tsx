@@ -1,3 +1,4 @@
+import { Timestamp } from '@/components/Timestamp'
 import { ArrowUpRight, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router'
 import { PageHeader } from '@/components/PageHeader'
@@ -31,7 +32,7 @@ export function OverviewPage() {
       <CardContent><ReadPanel query={dashboard.health}>{({ data }, unconfirmed) => <>
         <Badge tone={unconfirmed ? 'neutral' : data.status === 'healthy' ? 'success' : 'destructive'}>{data.status}{unconfirmed ? ' (status terakhir)' : ''}</Badge>
         <dl className="my-4 grid gap-3 sm:grid-cols-3">{Object.entries(data.components).map(([name, value]) => <div key={name} className="rounded-md bg-muted/50 p-3"><dt className="text-xs uppercase text-muted-foreground">{name}</dt><dd className="mt-1 text-sm font-medium">{value}</dd></div>)}</dl>
-        <p className="text-xs text-muted-foreground">Pemeriksaan backend: <time dateTime={data.checked_at}>{data.checked_at}</time>. Health bukan bukti adanya solusi penjadwalan.</p>
+        <p className="text-xs text-muted-foreground">Pemeriksaan backend: <Timestamp value={data.checked_at} />. Health bukan bukti adanya solusi penjadwalan.</p>
       </>}</ReadPanel></CardContent>
     </Card>
     <section aria-labelledby="master-summary-title">
@@ -51,14 +52,14 @@ export function OverviewPage() {
           <p className="text-lg font-semibold">Versi #{data.id}</p><VersionStatus status={data.status} unconfirmed={unconfirmed} />
           <p className="text-sm">{data.summary.total_assignment} assignment · {data.summary.total_praktikum} praktikum</p>
           <p className="text-xs text-muted-foreground">Source revision: {data.source_revision}</p>
-          <p className="text-xs">Disimpan: <time dateTime={data.created_at}>{data.created_at}</time></p>
+          <p className="text-xs">Disimpan: <Timestamp value={data.created_at} /></p>
         </div>}</ReadPanel>
         <Link className={`${linkStyle} mt-4 inline-block`} to="/timetable">Lihat Timetable</Link>
       </CardContent></Card>
       <Card role="region" aria-label="Ringkasan riwayat"><CardHeader><CardTitle>Ringkasan riwayat</CardTitle></CardHeader><CardContent>
         <ReadPanel query={dashboard.history}>{({ data, meta }, unconfirmed) => <div className="space-y-3">
           <p className="text-sm">Total versi tersimpan: <strong className="font-mono text-xl">{meta.total_items}</strong></p>
-          {data[0] ? <><p className="text-lg font-semibold">Versi terbaru #{data[0].id}</p><VersionStatus status={data[0].status} unconfirmed={unconfirmed} /><p className="text-xs"><time dateTime={data[0].created_at}>{data[0].created_at}</time> · Source revision: {data[0].source_revision}</p><p className="text-xs text-muted-foreground">Terbaru berdasarkan waktu simpan dan ID, tidak selalu aktif.</p></> : <p className="text-sm">{unconfirmed ? 'Pembacaan terakhir: belum ada riwayat tersimpan.' : 'Belum ada riwayat tersimpan.'}</p>}
+          {data[0] ? <><p className="text-lg font-semibold">Versi terbaru #{data[0].id}</p><VersionStatus status={data[0].status} unconfirmed={unconfirmed} /><p className="text-xs"><Timestamp value={data[0].created_at} /> · Source revision: {data[0].source_revision}</p><p className="text-xs text-muted-foreground">Terbaru berdasarkan waktu simpan dan ID, tidak selalu aktif.</p></> : <p className="text-sm">{unconfirmed ? 'Pembacaan terakhir: belum ada riwayat tersimpan.' : 'Belum ada riwayat tersimpan.'}</p>}
         </div>}</ReadPanel>
         <Link className={`${linkStyle} mt-4 inline-block`} to="/schedule-history">Lihat Schedule History</Link>
       </CardContent></Card>

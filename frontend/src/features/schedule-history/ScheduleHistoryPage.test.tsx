@@ -1,3 +1,4 @@
+import { formatTimestamp, scheduleStatusLabels } from '@/lib/presentation'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -127,8 +128,8 @@ describe('history list and server query contract', () => {
     await ready()
     const table = listTable()
     expect(table.getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[0]?.textContent)).toEqual(['#305', '#81', '#7'])
-    for (const status of ['active', 'invalid', 'archived']) expect(table.getByText(status)).toBeInTheDocument()
-    expect(table.getByText(details[81]!.created_at)).toHaveAttribute('dateTime', details[81]!.created_at)
+    for (const status of ['active', 'invalid', 'archived']) expect(table.getByText(scheduleStatusLabels[status as keyof typeof scheduleStatusLabels])).toBeInTheDocument()
+    expect(table.getByText(formatTimestamp(details[81]!.created_at))).toHaveAttribute('dateTime', details[81]!.created_at)
     expect(screen.getByText('3 versi sesuai filter · Halaman 1 dari 1 · 3 versi pada halaman ini.')).toBeInTheDocument()
     expect(panel().queryByRole('table')).not.toBeInTheDocument()
     expect(requests).toHaveLength(1)
@@ -139,7 +140,7 @@ describe('history list and server query contract', () => {
     changeStatus(305, 'invalid')
     setup()
     await ready()
-    expect(listTable().queryByText('active')).not.toBeInTheDocument()
+    expect(listTable().queryByText('Aktif')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Lihat versi/ }).every((button) => button.getAttribute('aria-pressed') === 'false')).toBe(true)
     expect(panel().queryByRole('table')).not.toBeInTheDocument()
   })
@@ -150,7 +151,7 @@ describe('history list and server query contract', () => {
     await user.selectOptions(screen.getByLabelText('Status versi'), status)
     await waitFor(() => expect(listTable().getAllByRole('row')).toHaveLength(2))
     expect(requests.at(-1)?.query.get('status')).toBe(status)
-    expect(listTable().getByText(status)).toBeInTheDocument()
+    expect(listTable().getByText(scheduleStatusLabels[status as keyof typeof scheduleStatusLabels])).toBeInTheDocument()
     expect(screen.getByText('1 versi sesuai filter · Halaman 1 dari 1 · 1 versi pada halaman ini.')).toBeInTheDocument()
   })
 
@@ -159,7 +160,7 @@ describe('history list and server query contract', () => {
     const { user } = setup()
     await ready()
     await user.selectOptions(screen.getByLabelText('Status versi'), 'active')
-    await screen.findByText('Tidak ada versi dengan status active.')
+    await screen.findByText('Tidak ada versi dengan status Aktif.')
     expect(screen.queryByText(/Belum ada versi jadwal tersimpan/)).not.toBeInTheDocument()
   })
 
@@ -221,8 +222,8 @@ describe('historical detail and identity', () => {
     expect(screen.getByRole('button', { name: `Lihat versi #${id}` })).toHaveAttribute('aria-pressed', 'true')
     expect(listTable().getByText('Terpilih')).toBeInTheDocument()
     expect(panel().getByText('Schema snapshot')).toBeInTheDocument()
-    expect(panel().getByText('Snapshot digenerate (UTC)')).toBeInTheDocument()
-    expect(panel().getByText('Snapshot disimpan (UTC)')).toBeInTheDocument()
+    expect(panel().getByText('Snapshot digenerate (WIB)')).toBeInTheDocument()
+    expect(panel().getByText('Snapshot disimpan (WIB)')).toBeInTheDocument()
     const table = within(panel().getByRole('table', { name: 'Tabel penempatan jadwal' }))
     expect(table.getAllByRole('row')).toHaveLength(3)
     expect(table.getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual(['#11', '#12'])
@@ -333,9 +334,9 @@ describe('refresh, stale caches, and status transitions', () => {
     const before = structuredClone(client.getQueryData(queryKeys.schedules.historyDetail(305)))
     changeStatus(305, 'invalid')
     await user.click(refresh())
-    await waitFor(() => expect(panel().getByText('invalid')).toBeInTheDocument())
-    expect(listTable().getAllByText('invalid')).toHaveLength(2)
-    expect(panel().getByText('Diinvalidasi (UTC)')).toBeInTheDocument()
+    await waitFor(() => expect(panel().getByText('Tidak Valid')).toBeInTheDocument())
+    expect(listTable().getAllByText('Tidak Valid')).toHaveLength(2)
+    expect(panel().getByText('Diinvalidasi (WIB)')).toBeInTheDocument()
     const after = client.getQueryData<{ data: ScheduleHistoryDetail }>(queryKeys.schedules.historyDetail(305))!
     expect(after.data.assignments).toEqual((before as { data: ScheduleHistoryDetail }).data.assignments)
     expect(after.data.snapshot).toEqual((before as { data: ScheduleHistoryDetail }).data.snapshot)
@@ -350,10 +351,10 @@ describe('refresh, stale caches, and status transitions', () => {
     await select(user)
     changeStatus(305, 'invalid')
     await user.click(refresh())
-    await screen.findByText('Tidak ada versi dengan status active.')
+    await screen.findByText('Tidak ada versi dengan status Aktif.')
     expect(panel().getByText(/Versi terpilih #305 tidak ada pada halaman\/filter daftar terbaru/)).toBeInTheDocument()
     expect(panel().getByRole('heading', { name: 'Snapshot versi #305' })).toBeInTheDocument()
-    expect(panel().getByText('invalid')).toBeInTheDocument()
+    expect(panel().getByText('Tidak Valid')).toBeInTheDocument()
     expect(requests.some((request) => request.path === 'jadwal/riwayat/81')).toBe(false)
   })
 
@@ -364,8 +365,8 @@ describe('refresh, stale caches, and status transitions', () => {
     await user.click(refresh())
     await screen.findByRole('alert')
     expect(screen.getByText(/Daftar cache mungkin tidak mutakhir/)).toBeInTheDocument()
-    expect(listTable().getByText('archived (status terakhir)')).toBeInTheDocument()
-    expect(panel().getByText('archived')).toBeInTheDocument()
+    expect(listTable().getByText('Diarsipkan (status terakhir)')).toBeInTheDocument()
+    expect(panel().getByText('Diarsipkan')).toBeInTheDocument()
     expect(panel().getByRole('table')).toBeInTheDocument()
     expect(screen.queryByText(/Belum ada versi jadwal tersimpan/)).not.toBeInTheDocument()
   })
@@ -376,7 +377,7 @@ describe('refresh, stale caches, and status transitions', () => {
     override = (request) => request.path.endsWith('/81') ? failure() : undefined
     await user.click(refresh())
     await screen.findByRole('alert')
-    expect(panel().getByText('archived (status terakhir)')).toBeInTheDocument()
+    expect(panel().getByText('Diarsipkan (status terakhir)')).toBeInTheDocument()
     expect(panel().getByText(/Snapshot cache ditampilkan/)).toBeInTheDocument()
     expect(panel().getByRole('table')).toBeInTheDocument()
   })
@@ -397,8 +398,8 @@ describe('refresh, stale caches, and status transitions', () => {
     const { user } = setup()
     await select(user)
     expect(panel().getByText(/Status daftar dan detail berbeda antar pembacaan/)).toBeInTheDocument()
-    expect(panel().getByText('invalid')).toBeInTheDocument()
-    expect(listTable().getByText('active')).toBeInTheDocument()
+    expect(panel().getByText('Tidak Valid')).toBeInTheDocument()
+    expect(listTable().getByText('Aktif')).toBeInTheDocument()
   })
 
   it('preserves original historical names and every assignment across refresh without any master lookup', async () => {

@@ -1,3 +1,4 @@
+import { formatTimestamp } from '@/lib/presentation'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -89,8 +90,8 @@ describe('loading, active snapshot, and empty/error semantics', () => {
     setup()
     await ready()
     expect(screen.getByText('#21')).toBeInTheDocument()
-    expect(screen.getByText('active')).toBeInTheDocument()
-    expect(screen.getByText(f.saved.created_at)).toHaveAttribute('dateTime', f.saved.created_at)
+    expect(screen.getByText('Aktif')).toBeInTheDocument()
+    expect(screen.getByText(formatTimestamp(f.saved.created_at))).toHaveAttribute('dateTime', f.saved.created_at)
     expect(screen.getByText('7')).toBeInTheDocument()
     expect(screen.getByText('Menampilkan 5 dari 5 penempatan snapshot.')).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/Semester Ganjil|2024\/2025|0 Bentrok|SAT SOLVED|C01-C09 OK|wall_time_ms|confidence score|Execution Latency/)
@@ -231,7 +232,7 @@ describe('refresh, stale data, and invalidation', () => {
     override = () => new Promise<Response>((resolve) => { finish = resolve })
     setup(makeSchedule())
     expect(screen.getByText('Snapshot terakhir — belum terkonfirmasi aktif')).toBeInTheDocument()
-    expect(screen.getByText('Status terakhir: active')).toBeInTheDocument()
+    expect(screen.getByText('Status terakhir: Aktif')).toBeInTheDocument()
     expect(screen.getByText(/Memeriksa jadwal aktif/)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Jadwal aktif' })).not.toBeInTheDocument()
     await act(async () => { finish?.(f.jsonResponse({ data: schedule })) })

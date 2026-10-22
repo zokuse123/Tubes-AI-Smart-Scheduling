@@ -111,7 +111,7 @@ test('D05 CONTROLLED degraded 503 is valid; failed refresh marks cached active/h
   await page.getByRole('button', { name: 'Refresh dashboard', exact: true }).click()
   await expect(card.getByText(/Data terakhir — kondisi terkini belum terkonfirmasi/)).toBeVisible()
   const active = page.getByRole('region', { name: 'Jadwal aktif', exact: true })
-  await expect(active.getByText('active (status terakhir)', { exact: true })).toBeVisible()
+  await expect(active.getByText('Aktif (status terakhir)', { exact: true })).toBeVisible()
   await expect(active.getByText(`Versi #${saved.id}`, { exact: true })).toBeVisible()
   await expect(active.getByRole('alert')).toBeVisible()
 })

@@ -81,7 +81,7 @@ const error = (code = 'DATABASE_BUSY', status = 503) => f.jsonResponse({ error: 
 describe('catalogs, grid, and GET', () => {
   it('loads real active owner choices without selecting a resource or mutating on mount', async () => {
     setup()
-    expect(screen.getByRole('heading', { name: 'Resource Availability' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Resource Availability' })).toBeInTheDocument()
     await screen.findByRole('option', { name: `${f.kelompok.nama} · ID #2` })
     expect(screen.queryByRole('option', { name: /Kelompok nonaktif/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()

@@ -1,3 +1,4 @@
+import { Timestamp } from '@/components/Timestamp'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { GenerateSuccess } from '@/api/types/scheduling'
@@ -16,8 +17,8 @@ export function PreviewLifetime({ preview, busy, save }: { preview: GenerateSucc
     <dl className="grid gap-4 text-xs sm:grid-cols-2">
       <div><dt className="text-muted-foreground">Preview ID</dt><dd className="mt-1 break-all font-mono">{preview.preview_id}</dd></div>
       <div><dt className="text-muted-foreground">Source revision preview</dt><dd className="mt-1 font-mono">{preview.source_revision}</dd></div>
-      <div><dt className="text-muted-foreground">Dibuat (UTC)</dt><dd className="mt-1 break-all font-mono"><time dateTime={preview.created_at}>{preview.created_at}</time></dd></div>
-      <div><dt className="text-muted-foreground">Berlaku sampai (UTC)</dt><dd className="mt-1 break-all font-mono"><time dateTime={preview.expires_at}>{preview.expires_at}</time></dd></div>
+      <div><dt className="text-muted-foreground">Dibuat (WIB)</dt><dd className="mt-1 break-all font-mono"><Timestamp value={preview.created_at} /></dd></div>
+      <div><dt className="text-muted-foreground">Berlaku sampai (WIB)</dt><dd className="mt-1 break-all font-mono"><Timestamp value={preview.expires_at} /></dd></div>
     </dl>
     <p className="text-xs leading-5 text-muted-foreground">Preview berlaku 30 menit menurut waktu backend. Jam lokal hanya petunjuk; backend menentukan expiry dan stale saat simpan. Preview hanya tersedia di memori halaman ini, tidak dapat dilanjutkan setelah reload atau meninggalkan halaman.</p>
     {expired && <p role="status" className="text-sm text-destructive">Preview melewati expires_at menurut jam perangkat. Generate ulang; periksa jam perangkat bila tidak sesuai.</p>}

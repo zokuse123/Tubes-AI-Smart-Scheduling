@@ -1,3 +1,5 @@
+import { scheduleStatusLabels } from '@/lib/presentation'
+import { Timestamp } from '@/components/Timestamp'
 import { Link } from 'react-router'
 import { Workflow } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
@@ -39,7 +41,7 @@ export function ConstraintStudioPage() {
       {result?.status === 'unsatisfiable' && <Card><CardHeader><CardTitle><Badge tone="neutral">UNSAT</Badge> Tidak ditemukan solusi</CardTitle></CardHeader><CardContent><p className="text-sm">{result.message}</p><p className="mt-3 text-sm leading-6 text-muted-foreground">Periksa availability kelompok/asisten, kapasitas laboratorium, dan kegiatan praktikum. Ini saran peninjauan, bukan diagnosis penyebab pasti. Tidak ada preview atau assignment untuk disimpan.</p></CardContent></Card>}
       {result?.status === 'success' && <Card className="min-w-0 overflow-hidden"><CardHeader><CardTitle><Badge tone="success">SAT</Badge> Solusi ditemukan — belum disimpan</CardTitle></CardHeader><CardContent><p className="text-sm">{result.summary.total_praktikum} kegiatan praktikum · {result.summary.total_assignment} penempatan dari respons backend.</p><p className="mt-2 text-xs text-muted-foreground">Nama berasal dari nested snapshot respons generate, bukan lookup master terkini. Hasil bersifat read-only.</p></CardContent><AssignmentsTable assignments={result.assignments} /><PreviewLifetime key={result.preview_id} preview={result} busy={phase === 'saving'} save={save} /></Card>}
       {result && <Diagnostics result={result} />}
-      {saved && <Card><CardHeader><CardTitle>Jadwal berhasil disimpan</CardTitle></CardHeader><CardContent><div role="status" className="space-y-2 text-sm"><p>Versi #{saved.id} · status {saved.status} · source revision {saved.source_revision}</p><p className="text-xs text-muted-foreground">Tersimpan (UTC): <time dateTime={saved.created_at}>{saved.created_at}</time></p><p>{saved.summary.total_praktikum} kegiatan praktikum · {saved.summary.total_assignment} penempatan.</p><p className="text-xs text-muted-foreground">Preview telah digunakan. Tidak ada aksi simpan ulang. Data jadwal aktif dan riwayat akan dimuat ulang saat diperlukan.</p></div></CardContent></Card>}
+      {saved && <Card><CardHeader><CardTitle>Jadwal berhasil disimpan</CardTitle></CardHeader><CardContent><div role="status" className="space-y-2 text-sm"><p>Versi #{saved.id} · status {scheduleStatusLabels[saved.status]} · source revision {saved.source_revision}</p><p className="text-xs text-muted-foreground">Tersimpan (WIB): <Timestamp value={saved.created_at} /></p><p>{saved.summary.total_praktikum} kegiatan praktikum · {saved.summary.total_assignment} penempatan.</p><p className="text-xs text-muted-foreground">Preview telah digunakan. Tidak ada aksi simpan ulang. Data jadwal aktif dan riwayat akan dimuat ulang saat diperlukan.</p></div></CardContent></Card>}
     </div>
   </>
 }

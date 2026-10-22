@@ -71,6 +71,7 @@ export function MasterForm({ resource, record, onComplete, onCancel, onBusy }: P
       {referenceError && <ErrorFeedback error={referenceError} retry={() => { void Promise.all(referenceQueries.map((q) => q.refetch())) }} />}
       {!waiting && !referenceError && missingReferences && <p role="status" className="rounded-md border border-border bg-muted p-3 text-sm">Referensi aktif belum lengkap. Tambahkan mata praktikum, kelompok, dan asisten aktif terlebih dahulu.</p>}
       <fieldset disabled={mutation.isPending || waiting || !!referenceError} className="space-y-4">
+        <p className="text-xs text-muted-foreground">Semua field wajib diisi.</p>
         {config.fields.map((field) => {
           const id = `master-field-${field.name}`
           const error = form.formState.errors[field.name]
@@ -81,13 +82,13 @@ export function MasterForm({ resource, record, onComplete, onCancel, onBusy }: P
             <div key={field.name}>
               <label htmlFor={id} className="mb-1.5 block text-sm font-medium">{field.label}</label>
               {field.kind === 'reference' || field.kind === 'day' ? (
-                <Select id={id} {...form.register(field.name)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined}>
+                <Select required id={id} {...form.register(field.name)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined}>
                   <option value="" disabled>Pilih {field.label.toLowerCase()}</option>
                   {field.kind === 'day' ? days.map((day, index) => <option key={day} value={index + 1}>{day}</option>) : rows.map((row) => <option key={row.id} value={row.id}>{rawField(row, 'nama')} · ID #{row.id}</option>)}
                   {currentMissing && <option value={current} disabled>Referensi saat ini #{current} — tidak tersedia untuk dipilih</option>}
                 </Select>
               ) : (
-                <Input id={id} {...form.register(field.name)} type={field.kind === 'time' ? 'time' : 'text'} inputMode={field.kind === 'integer' ? 'numeric' : undefined} step={field.kind === 'time' ? 60 : undefined} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} autoComplete="off" />
+                <Input required id={id} {...form.register(field.name)} type={field.kind === 'time' ? 'time' : 'text'} inputMode={field.kind === 'integer' ? 'numeric' : undefined} step={field.kind === 'time' ? 60 : undefined} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} autoComplete="off" />
               )}
               {error && <p id={`${id}-error`} className="mt-1 text-xs text-destructive">{String(error.message ?? 'Nilai tidak valid.')}</p>}
             </div>

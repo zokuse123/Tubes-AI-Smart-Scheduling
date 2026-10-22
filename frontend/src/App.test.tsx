@@ -45,9 +45,9 @@ describe('application shell and routing', () => {
     }
   })
 
-  it.each(pages)('renders $path and marks only its own sidebar link active', ({ path, title, link }) => {
+  it.each(pages)('renders $path and marks only its own sidebar link active', async ({ path, title, link }) => {
     renderPage(path)
-    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     expect(document.title).toBe(`${title} | Smart Lab Scheduling System`)
     const nav = screen.getByRole('navigation', { name: 'Navigasi utama desktop' })
     expect(within(nav).getByRole('link', { name: link })).toHaveAttribute('aria-current', 'page')
@@ -61,7 +61,7 @@ describe('application shell and routing', () => {
     const nav = within(screen.getByRole('navigation', { name: 'Navigasi utama desktop' }))
     for (const { title, link } of pages.slice(1)) {
       await user.click(nav.getByRole('link', { name: link }))
-      expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
       expect(screen.getByRole('main')).toBe(main)
     }
   })
@@ -69,15 +69,15 @@ describe('application shell and routing', () => {
   it.each(['/does-not-exist', '/data-master/does-not-exist'])('renders 404 for %s with no active navigation item', async (path) => {
     const user = userEvent.setup()
     renderPage(path)
-    expect(screen.getByRole('heading', { level: 1, name: 'Halaman tidak ditemukan' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Halaman tidak ditemukan' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Navigasi utama desktop' }).querySelector('[aria-current]')).toBeNull()
     await user.click(screen.getByRole('link', { name: 'Kembali ke Overview' }))
-    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
   })
 
-  it('accepts a trailing slash and still marks the correct route active', () => {
+  it('accepts a trailing slash and still marks the correct route active', async () => {
     renderPage('/data-master/')
-    expect(screen.getByRole('heading', { level: 1, name: 'Data Master' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Data Master' })).toBeInTheDocument()
     const nav = within(screen.getByRole('navigation', { name: 'Navigasi utama desktop' }))
     expect(nav.getByRole('link', { name: 'Data Master' })).toHaveAttribute('aria-current', 'page')
   })
@@ -120,7 +120,7 @@ describe('mobile navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Buka navigasi' }))
     const dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByRole('link', { name: 'Schedule History' }))
-    expect(screen.getByRole('heading', { level: 1, name: 'Schedule History' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Schedule History' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

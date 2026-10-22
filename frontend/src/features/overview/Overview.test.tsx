@@ -1,3 +1,4 @@
+import { formatTimestamp } from '@/lib/presentation'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -77,7 +78,7 @@ describe('Overview verified metadata and read-only workflow', () => {
     await settled()
     expect(region('System Health').getByText('healthy')).toBeInTheDocument()
     expect(region('System Health').getAllByText('available')).toHaveLength(3)
-    expect(region('System Health').getByText(f.timestamp)).toHaveAttribute('datetime', f.timestamp)
+    expect(region('System Health').getByText(formatTimestamp(f.timestamp))).toHaveAttribute('datetime', f.timestamp)
   })
   it('renders real empty master metadata without suggesting CSP readiness', async () => {
     setup((url) => resources.some(({ key }) => url.pathname.endsWith(`/${key}`)) ? f.jsonResponse({ data: [], meta: { page: 1, page_size: 1, total_items: 0, total_pages: 0 } }) : response(url))
@@ -121,10 +122,10 @@ describe('Overview verified metadata and read-only workflow', () => {
     await settled()
     const active = region('Jadwal aktif')
     expect(active.getByText('Versi #21')).toBeInTheDocument()
-    expect(active.getByText('active')).toBeInTheDocument()
+    expect(active.getByText('Aktif')).toBeInTheDocument()
     expect(active.getByText('1 assignment · 1 praktikum')).toBeInTheDocument()
     expect(active.getByText('Source revision: 7')).toBeInTheDocument()
-    expect(active.getByText(f.saved.created_at)).toHaveAttribute('datetime', f.saved.created_at)
+    expect(active.getByText(formatTimestamp(f.saved.created_at))).toHaveAttribute('datetime', f.saved.created_at)
   })
   it('keeps independent summaries when active request fails, without claiming absence', async () => {
     setup((url) => url.pathname.endsWith('/jadwal/aktif') ? fail() : response(url))
@@ -144,7 +145,7 @@ describe('Overview verified metadata and read-only workflow', () => {
     setup()
     await settled()
     expect(region('Ringkasan riwayat').getByText('8')).toBeInTheDocument()
-    expect(region('Ringkasan riwayat').getByText('invalid')).toBeInTheDocument()
+    expect(region('Ringkasan riwayat').getByText('Tidak Valid')).toBeInTheDocument()
     const url = requests.find(({ url }) => url.pathname.endsWith('/jadwal/riwayat'))!.url
     expect(Object.fromEntries(url.searchParams)).toEqual(Object.fromEntries(Object.entries(latestHistoryQuery).map(([key, value]) => [key, String(value)])))
   })
@@ -190,13 +191,13 @@ describe('Overview verified metadata and read-only workflow', () => {
     await settled()
     expect(screen.getAllByText(/Data terakhir — kondisi terkini belum terkonfirmasi/)).toHaveLength(21)
     expect(region('System Health').getByText('healthy (status terakhir)')).toBeInTheDocument()
-    expect(region('Jadwal aktif').getByText('active (status terakhir)')).toBeInTheDocument()
-    expect(region('Ringkasan riwayat').getByText('invalid (status terakhir)')).toBeInTheDocument()
+    expect(region('Jadwal aktif').getByText('Aktif (status terakhir)')).toBeInTheDocument()
+    expect(region('Ringkasan riwayat').getByText('Tidak Valid (status terakhir)')).toBeInTheDocument()
   })
   it('marks existing cache unconfirmed while a refresh is still pending', async () => {
     setup(() => new Promise(() => {}), (client) => client.setQueryData(queryKeys.schedules.active(), { data: f.saved }))
     expect(region('Jadwal aktif').getByText(/Data terakhir/)).toBeInTheDocument()
-    expect(region('Jadwal aktif').getByText('active (status terakhir)')).toBeInTheDocument()
+    expect(region('Jadwal aktif').getByText('Aktif (status terakhir)')).toBeInTheDocument()
   })
   it('reuses F04 master invalidation across all three count filters', async () => {
     const { client } = setup()

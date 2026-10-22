@@ -1,9 +1,10 @@
 import type { Assignment } from '@/api/types/scheduling'
+import { TableScroll } from '@/components/TableScroll'
 import { days } from '@/features/master-data/resources'
 import { referenceLabel } from '@/features/constraint-studio/presentation'
 
 export function ScheduleTable({ assignments }: { assignments: readonly Assignment[] }) {
-  return <div className="overflow-x-auto rounded-lg border border-border bg-card">
+  return <TableScroll label="Area gulir tabel jadwal" className="rounded-lg border border-border bg-card">
     <table className="w-full text-left text-sm" aria-label="Tabel penempatan jadwal">
       <caption className="sr-only">Penempatan dari snapshot jadwal tersimpan, diurutkan berdasarkan hari, jam, slot, laboratorium, dan ID praktikum.</caption>
       <thead className="border-b border-border bg-muted/60 text-xs text-muted-foreground"><tr>{['Hari', 'Jam', 'Praktikum', 'Mata praktikum', 'Kelompok', 'Asisten', 'Laboratorium'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium">{label}</th>)}</tr></thead>
@@ -17,5 +18,5 @@ export function ScheduleTable({ assignments }: { assignments: readonly Assignmen
         <td className="min-w-36 px-4 py-3">{referenceLabel(assignment.laboratorium)}<span className="mt-1 block text-xs text-muted-foreground">Kapasitas {assignment.laboratorium.kapasitas}</span></td>
       </tr>)}</tbody>
     </table>
-  </div>
+  </TableScroll>
 }

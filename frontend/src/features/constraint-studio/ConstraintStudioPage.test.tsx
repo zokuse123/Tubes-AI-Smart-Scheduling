@@ -1,3 +1,4 @@
+import { formatTimestamp } from '@/lib/presentation'
 import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -90,7 +91,7 @@ describe('idle, generate, and diagnostics', () => {
     expect(table.getByText(`${f.lab.nama} · #5`)).toBeInTheDocument()
     expect(table.getByText('08:00–10:00')).toBeInTheDocument()
     expect(screen.getByText(f.sat.preview_id)).toBeInTheDocument()
-    expect(screen.getByText(f.sat.expires_at)).toBeInTheDocument()
+    expect(screen.getByText(formatTimestamp(f.sat.expires_at))).toBeInTheDocument()
     expect(saveButton()).toBeEnabled()
     expect(saves()).toHaveLength(0)
     expect(requests).toHaveLength(1)
@@ -179,7 +180,7 @@ describe('save lifecycle', () => {
     await screen.findByText('Jadwal berhasil disimpan')
     expect(saves()).toHaveLength(1)
     expect(saves()[0]).toMatchObject({ method: 'POST', body: { preview_id: f.sat.preview_id } })
-    expect(screen.getByText('Versi #21 · status active · source revision 7')).toBeInTheDocument()
+    expect(screen.getByText('Versi #21 · status Aktif · source revision 7')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Simpan Jadwal' })).not.toBeInTheDocument()
     for (const key of affected) expect(client.getQueryState(key)?.isInvalidated).toBe(true)
     for (const key of unaffected) expect(client.getQueryState(key)?.isInvalidated).toBe(false)

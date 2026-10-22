@@ -1,3 +1,5 @@
+import { Timestamp } from '@/components/Timestamp'
+import { TableScroll } from '@/components/TableScroll'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Database, Plus, RefreshCw } from 'lucide-react'
@@ -62,7 +64,7 @@ export function ResourceWorkspace({ resource }: { resource: MasterResource }) {
         <Card className="min-w-0 overflow-hidden">
           <CardHeader className="flex flex-wrap items-center justify-between gap-2"><CardTitle>Daftar {config.label}</CardTitle>{list.isFetching && !list.isPending && <span role="status" className="text-xs text-muted-foreground">Memperbarui daftar…</span>}</CardHeader>
           {list.isPending ? <LoadingState /> : list.isError ? <div className="p-5"><ErrorFeedback error={list.error} retry={() => { void list.refetch() }} /></div> : !list.data.data.length ? <div className="px-6 py-14 text-center"><Database size={28} className="mx-auto mb-3 text-muted-foreground" aria-hidden="true" /><p className="text-sm font-medium">Tidak ada data sesuai filter.</p><p className="mt-1 text-xs text-muted-foreground">Ubah filter atau tambahkan data baru.</p></div> : (
-            <div className="overflow-x-auto">
+            <TableScroll label={`Area gulir daftar ${config.label}`}>
               <table aria-label={`Daftar ${config.label}`} className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-muted/60 text-xs text-muted-foreground"><tr><th scope="col" className="px-4 py-3 font-medium">ID</th>{config.fields.map((field) => <th scope="col" key={field.name} className="px-4 py-3 font-medium">{field.label}</th>)}<th scope="col" className="px-4 py-3 font-medium">Status</th><th scope="col" className="px-4 py-3 font-medium">Aksi</th></tr></thead>
                 <tbody className="divide-y divide-border">{list.data.data.map((row) => <tr key={row.id} className={selectedId === row.id ? 'bg-accent/40' : 'hover:bg-muted/40'}>
@@ -72,7 +74,7 @@ export function ResourceWorkspace({ resource }: { resource: MasterResource }) {
                   <td className="px-4 py-3"><Button variant="outline" size="sm" disabled={list.isFetching} onClick={() => setSelectedId(row.id)} aria-label={`Lihat detail ${config.label} #${row.id}`}>Detail</Button></td>
                 </tr>)}</tbody>
               </table>
-            </div>
+            </TableScroll>
           )}
           {list.data && !list.isError && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-xs text-muted-foreground">
             <span>{list.data.meta.total_items} record · {list.data.meta.total_pages > 0 ? `Halaman ${list.data.meta.page} dari ${list.data.meta.total_pages}` : 'Tidak ada halaman'}</span>
@@ -87,8 +89,8 @@ export function ResourceWorkspace({ resource }: { resource: MasterResource }) {
               <div className="mb-4 flex items-center justify-between"><span className="font-mono text-xs text-muted-foreground">ID #{record.id}</span><StatusBadge active={record.is_active} /></div>
               {detail.isFetching && <p role="status" className="mb-3 text-xs text-muted-foreground">Memperbarui detail…</p>}
               <dl className="space-y-4">{config.fields.map((field) => <div key={field.name}><dt className="text-xs text-muted-foreground">{field.label}</dt><dd className="mt-1 break-words text-sm font-medium">{displayField(record, field.name)}</dd></div>)}
-                <div><dt className="text-xs text-muted-foreground">Dibuat (UTC)</dt><dd className="mt-1 break-all font-mono text-xs"><time dateTime={record.created_at}>{record.created_at}</time></dd></div>
-                <div><dt className="text-xs text-muted-foreground">Diperbarui (UTC)</dt><dd className="mt-1 break-all font-mono text-xs"><time dateTime={record.updated_at}>{record.updated_at}</time></dd></div>
+                <div><dt className="text-xs text-muted-foreground">Dibuat (WIB)</dt><dd className="mt-1 break-all font-mono text-xs"><Timestamp value={record.created_at} /></dd></div>
+                <div><dt className="text-xs text-muted-foreground">Diperbarui (WIB)</dt><dd className="mt-1 break-all font-mono text-xs"><Timestamp value={record.updated_at} /></dd></div>
               </dl>
               <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4"><Button variant="outline" disabled={detail.isFetching} onClick={() => { setFormBusy(false); setEditor({ record }) }}>Ubah data</Button><Button variant={record.is_active ? 'destructive' : 'outline'} disabled={detail.isFetching} onClick={() => openStatus(record)}>{record.is_active ? 'Nonaktifkan' : 'Aktifkan'}</Button></div>
             </>}

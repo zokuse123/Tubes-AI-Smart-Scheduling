@@ -6,7 +6,7 @@ React + TypeScript application scaffolded with Vite. F03 provides the shared she
 
 Overview makes 21 bounded GET requests on mount: 18 master collections (six resources with `is_active=all|true|false`, `page=1&page_size=1`), health, active schedule, and history (`page=1&page_size=1&sort_by=created_at&sort_order=desc&status=all`). All counts use `meta.total_items`, never page length or subtraction. Counts are independent reads, not an atomic aggregate snapshot. F04 query keys and mutation invalidation are reused. No detail N+1 queries, polling, automatic retries, scheduling, or writes occur on Overview.
 
-Each section retains independent loading/error/retry state; Refresh dashboard refetches only its queries without clearing unrelated caches. Cached results during refresh or after failure are marked unconfirmed. HTTP 503 health data remains degraded, unlike an unknown network state. Empty active/history responses are distinct from failures. Health and resource counts do not prove CSP readiness, capacity, availability, or SAT. Workflow cards only navigate. F11 browser integration/polishing remains separate.
+Each section retains independent loading/error/retry state; Refresh dashboard refetches only its queries without clearing unrelated caches. Cached results during refresh or after failure are marked unconfirmed. HTTP 503 health data remains degraded, unlike an unknown network state. Empty active/history responses are distinct from failures. Health and resource counts do not prove CSP readiness, capacity, availability, or SAT. Workflow cards only navigate. F11-B–E browser integration and targeted polishing are described below; F11-F remains separate.
 
 ## Requirements
 
@@ -55,11 +55,11 @@ The smoke checks shell/navigation, all six routes, real healthy response and com
 
 All dataset creation, updates, status changes, availability PUTs, generate and save operations come from actual UI interactions. No API interception, mocks, fixed IDs, or manually inserted assignments are used. An automatic browser audit matches every mutation against the method/path/body registered immediately before its UI action, rejects unexpected/duplicate writes and wrong API targets, and checks page/console errors. Read-only GETs reuse F04 DTO schemas. A bounded Python `mode=ro` SQLite reader additionally checks the temporary database's preview v1 result, separate snapshot, consumed states, version statuses, and immutable JSON. The real solver remains the backend's normal subprocess path; no test override is supplied.
 
-The F11-B infrastructure safety tests remain available via `npm run test:e2e:infra`. E2E helper/config typechecking uses bundler module resolution so the tests can import the same extensionless DTO modules as the app. This does not emit or change production source. Accessibility/performance polishing and final demo readiness remain F11-E/F11-F.
+The F11-B infrastructure safety tests remain available via `npm run test:e2e:infra`. Run them separately from browser tests because both suites exclusively own ports 5173/5007. E2E helper/config typechecking uses bundler module resolution so the tests can import the same extensionless DTO modules as the app. This does not emit or change production source. F11-E covers accessibility/performance polishing; final demo readiness remains F11-F.
 
 ## Failure, lifecycle and concurrency tests (F11-D)
 
-`npm run test:e2e` also runs 20 negative/recovery cases, explicitly named by evidence layer. `negative-lifecycle.spec.ts` uses actual solver/HTTP results; `network-failures.spec.ts` uses controlled network faults; `races.spec.ts` delays captured real responses, never inventing assignments or solver results. Combined with F11-B/C there are 26 browser cases.
+`npm run test:e2e` also runs 20 negative/recovery cases, explicitly named by evidence layer. `negative-lifecycle.spec.ts` uses actual solver/HTTP results; `network-failures.spec.ts` uses controlled network faults; `races.spec.ts` delays captured real responses, never inventing assignments or solver results. F11-B/C/D provide 26 browser cases; F11-E adds six (32 total).
 
 | Area | Evidence |
 |---|---|
@@ -177,7 +177,7 @@ Assignments use the nested names/IDs in the generated snapshot; there is no live
 
 Generate and Save are separate non-retrying mutations. Save sends only the actual `preview_id`. A synchronous single-flight guard prevents rapid duplicate submissions and overlapping generate/save. Regeneration immediately discards the previous local result. Leaving/unmounting aborts the client request and ignores late callbacks for that page; this does not prove the backend cancelled or rolled back the operation. Preview is kept only in page memory, never browser storage, and is not restored from the mutation cache after remount. No GET-preview endpoint or solver polling is used.
 
-Preview timestamps are displayed as backend UTC. A local one-second clock (no network polling) disables save after `expires_at` according to the device and refreshes on visibility change. This is only an expiry hint: backend time and revision checks remain authoritative, and an incorrect device clock may disable save prematurely. There is no invented countdown or client-side revision authority.
+Preview timestamps are displayed in Asia/Jakarta with an explicit WIB label; original backend UTC values remain in `datetime` and the tooltip. A local one-second clock (no network polling) disables save after `expires_at` according to the device and refreshes on visibility change. This is only an expiry hint: backend time and revision checks remain authoritative, and an incorrect device clock may disable save prematurely. There is no invented countdown or client-side revision authority.
 
 Confirmed save displays the returned version ID/status/revision and invalidates only active/history reads through the F04 helper. It removes the used preview from the local save path. `PREVIEW_EXPIRED`, `STALE_PREVIEW`, `PREVIEW_CONSUMED`, and `PREVIEW_NOT_FOUND` discard the local preview and require an explicit new generate. Known backend rejections such as `DATABASE_BUSY` retain the preview for an explicit retry if it has not expired. Transport, parsing, or protocol failures during save have an uncertain outcome: no success is claimed, no automatic retry occurs, and the local preview is no longer saveable. The user must verify persisted scheduling state before retrying an uncertain operation. Timetable reads the current active version; History lists saved versions and their snapshot details.
 
@@ -189,7 +189,7 @@ Component tests cover StrictMode idle behavior, SAT/UNSAT/errors, nested display
 
 Both Grid and Tabel use the same locally filtered snapshot assignments. Day, laboratory, and group options come only from that snapshot; filters use IDs, not names, and issue no requests. Sorting is deterministic by day, start/end time, slot ID, laboratory ID, then activity ID. A copied array is sorted; source assignments are not modified. The grid groups actual days and slot identities without inventing blank time periods, break times, equal per-day slot counts, or continuous timeline positions. Parallel activities sharing a slot remain separate cards, including their laboratory and resource IDs. The table includes every matching assignment and scrolls horizontally on narrow screens.
 
-Metadata is limited to returned version ID, status, saved timestamp (`created_at`, UTC), source revision, and backend summary counts. Displayed result counts use the filtered/full assignment lengths. Names and allocation stay exactly as stored, even if live master labels have changed. No utilization/conflict statistics, semester, confidence score, solver duration, or individual constraint PASS results are invented.
+Metadata is limited to returned version ID, status, saved timestamp (`created_at`, stored UTC, displayed WIB), source revision, and backend summary counts. Displayed result counts use the filtered/full assignment lengths. Names and allocation stay exactly as stored, even if live master labels have changed. No utilization/conflict statistics, semester, confidence score, solver duration, or individual constraint PASS results are invented.
 
 Refresh uses the same active query and consumes its cancellation signal. A new version resets version-specific filters; `null` removes the old grid and metadata. Cached data shown while checking/refetching is explicitly unconfirmed. A failed refresh retains the last snapshot with a stale warning and `Status terakhir`, not a claim of current active status. A failed request without cached schedule data is not presented as proof that no active schedule exists. There is no polling; Refresh or the existing F04 invalidation helpers trigger checks, so external changes remain unknown until the next read.
 
@@ -201,11 +201,30 @@ Component tests cover loading/null/errors/retry, parallel rooms, chronological o
 
 No version is automatically selected. Choosing a version loads its own GET detail; loading/errors are independent of the list. Page/filter/sort/page-size changes clear the selection instead of substituting another version. Manual Refresh retains the selected ID and refetches list/detail separately; if it leaves the current filtered page, an explicit notice preserves that identity. Queries are not polled. List and detail are separate backend reads, not an atomic snapshot of current status, so discrepancies are disclosed rather than merging metadata silently.
 
-Detail displays only returned version and snapshot metadata, UTC timestamps, terminal timestamps when present, and every historical assignment. It reuses F08's table and deterministic assignment comparator without changing F08 or duplicating presentation logic. Snapshot labels never come from current master catalogs. `active` means currently applicable at that status read; `invalid` lost validity after a relevant source change; `archived` was replaced without prior invalidation and does not mean solver failure. Historical payloads remain immutable even when version status transitions.
+Detail displays only returned version and snapshot metadata, WIB-formatted timestamps (retaining raw UTC), terminal timestamps when present, and every historical assignment. It reuses F08's table and deterministic assignment comparator without changing F08 or duplicating presentation logic. Snapshot labels never come from current master catalogs. `active` (Aktif) means currently applicable at that status read; `invalid` (Tidak Valid) lost validity after a relevant source change; `archived` (Diarsipkan) was replaced without prior invalidation and does not mean solver failure. Historical payloads remain immutable even when version status transitions.
 
 Cached list/detail data on refresh failures is marked unconfirmed. A fresh detail 404 hides cached assignments but preserves the list and selected ID, with an explicit not-found message/retry. A detail whose response ID differs from the selected ID is rejected as a protocol error. Late cancelled responses do not replace a newer selection. No restore, rollback, reactivate, edit, delete, generate, save, master lookup, export, or polling operation is provided by History.
 
 Component tests cover statuses, server pagination/sorting/filtering, list/detail loading and errors, identity/late responses, stale caches, snapshot metadata/labels, keyboard selection, navigation to actual Timetable, and F04 invalidation. Real Flask/SQLite/SWI-Prolog checks use a disposable temporary database. These checks are not browser E2E. Overview and final integration remain out of scope.
+
+## Accessibility, responsive presentation and lazy routes (F11-E)
+
+All six primary pages and the not-found page load through `React.lazy` and an accessible Suspense fallback. The shared shell and query provider remain mounted. A failed route import has a safe error boundary with explicit reload/Overview links; a reload may discard unsaved local state and never retries a mutation automatically.
+
+Forms expose native required semantics and a visible required-fields explanation. Existing Radix modal focus containment, Escape, focus restoration, native controls, error associations, live statuses and table column headers are preserved. Table scroll regions are named, keyboard focusable and include a visible hint. Timetable filters stack on narrow screens instead of squeezing long options beyond the viewport. No design-system replacement or new dependency was needed.
+
+Schedule status presentation uses Aktif / Tidak Valid / Diarsipkan, including cached-status qualifiers. API enums are unchanged. `Timestamp` formats canonical UTC through `Intl.DateTimeFormat` with `timeZone: 'Asia/Jakarta'` and an explicit WIB label; raw UTC remains in `datetime`/tooltip. Missing or invalid timestamps have a safe fallback. Countdown/expiry decisions still use the original backend timestamps, never the formatted text.
+
+`accessibility.spec.ts` covers populated six-route layouts at 375×812, 768×1024 and 1440×900, keyboard navigation/dialogs/form validation, availability, Generate/Save and contained keyboard table scrolling. `lazy-routes.spec.ts` covers cold document loads, deferred page imports, loading fallbacks, shell persistence and bounded GET traffic. Development StrictMode may cancel and reissue initial GETs; the test distinguishes completed reads from cancelled attempts. Existing F11-C/D mutation/network assertions remain active. Unit tests cover UTC/WIB boundaries, invalid values and a controlled rejected lazy import. These semantic/keyboard assertions are not a full WCAG audit; no axe dependency was added.
+
+Reproduce build analysis without changing configuration or installing tooling:
+
+```powershell
+npm run build -- --manifest
+node scripts/bundle-report.mjs
+```
+
+The report sums entry + transitive static imports for bootstrap JS, and separately includes Overview's static import graph for the complete landing page. It reports raw bytes and gzip per file; CSS/fonts and dynamic routes not requested are excluded. Chunking uses Vite defaults, not hand-written manualChunks or a raised warning threshold. Smaller transfer bytes alone do not prove faster interaction/loading. Browser runtime tests use the development server, not a calibrated production latency benchmark.
 
 ## Scheduling and errors
 

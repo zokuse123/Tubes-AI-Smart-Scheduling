@@ -164,7 +164,7 @@ describe('query runtime and provider', () => {
     vi.stubGlobal('fetch', fetch)
     render(<AppProviders><RouterProvider router={createMemoryRouter(appRoutes, { initialEntries: ['/'] })} /></AppProviders>)
     await act(async () => { await Promise.resolve() })
-    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
     expect(fetch).toHaveBeenCalledTimes(21)
     expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
   })

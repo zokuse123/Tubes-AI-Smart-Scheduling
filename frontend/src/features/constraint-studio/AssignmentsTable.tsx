@@ -1,9 +1,10 @@
 import type { Assignment } from '@/api/types/scheduling'
+import { TableScroll } from '@/components/TableScroll'
 import { days } from '@/features/master-data/resources'
 import { referenceLabel } from './presentation'
 
 export function AssignmentsTable({ assignments }: { assignments: readonly Assignment[] }) {
-  return <div className="overflow-x-auto">
+  return <TableScroll label="Area gulir preview penempatan">
     <table className="w-full text-left text-sm" aria-label="Preview penempatan praktikum">
       <thead className="border-b border-border bg-muted/60 text-xs text-muted-foreground"><tr>{['Praktikum', 'Mata praktikum', 'Kelompok', 'Asisten', 'Waktu', 'Laboratorium'].map((label) => <th key={label} scope="col" className="px-4 py-3 font-medium">{label}</th>)}</tr></thead>
       <tbody className="divide-y divide-border">{assignments.map((assignment) => <tr key={assignment.praktikum_id}>
@@ -15,5 +16,5 @@ export function AssignmentsTable({ assignments }: { assignments: readonly Assign
         <td className="min-w-36 px-4 py-3">{referenceLabel(assignment.laboratorium)}<span className="mt-1 block text-xs text-muted-foreground">Kapasitas {assignment.laboratorium.kapasitas}</span></td>
       </tr>)}</tbody>
     </table>
-  </div>
+  </TableScroll>
 }
