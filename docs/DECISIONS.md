@@ -75,6 +75,6 @@ Smart Lab Scheduling System | 19 Oktober 2026 | Keputusan disepakati dalam disku
 
 ## Belum diputuskan / wajib direview sebelum implementasi
 - Tanggal tepat pertemuan 11; penggunaan Flask dan React untuk proyek telah dikonfirmasi aman pada TASK 10A.1, tetapi item review/persetujuan formal anggota tim tetap terpisah.
-- Strategi labeling CLP(FD) terbaik dan batas dataset berdasarkan hasil benchmark nyata.
+- Batas dataset terjamin dan review benchmark lanjutan tetap terbuka. Default produksi aktual `[leftmost,enum,up]` tersedia dan diuji (TASK 07D/F11-F); ini bukan klaim bahwa strategi tersebut optimal pada seluruh dataset.
 - Kebijakan penghapusan manual versi jadwal historis; aktivasi ulang sudah dilarang oleh DEC-027.
 - Cara mengukur benchmark, dataset contoh, serta batas maksimal berdasarkan hasil nyata.

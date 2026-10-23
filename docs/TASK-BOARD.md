@@ -1,5 +1,5 @@
 # TASK-BOARD.md
-**Status:** item implementasi belum dikerjakan. Item keputusan dokumentasi yang telah diselesaikan ditandai terpisah; PIC adalah usulan pembagian kerja, bukan bukti implementasi sudah dimulai.
+**Status (verifikasi F11-F, 23 Oktober 2026):** solver, SQLite, 40 operasi backend, dan enam halaman frontend telah diimplementasikan dan diuji pada `feature/frontend` HEAD `4de3cf9`. Checklist teknis di bawah tidak menggantikan persetujuan/review tiga anggota atau bukti merge. Laporan: [F11-F-REPORT.md](F11-F-REPORT.md).
 
 ## Gerbang 0: wajib sebelum coding
 - [x] Tetapkan pemisahan `mata_praktikum` sebagai katalog dan `praktikum` sebagai kegiatan melalui DEC-013.
@@ -15,31 +15,31 @@
 
 ## Galang — Prolog
 - [ ] Audit prototipe lama read-only, catat komponen yang boleh diadaptasi tanpa memindahkan sumber.
-- [ ] Desain predikat/modul baru sesuai AI-RULES dan kontrak input-output.
-- [ ] Implementasi solver CSP untuk kegiatan praktikum multi-lab/multi-asisten.
-- [ ] Tes semua constraint, unsatisfiable, edge case.
-- [ ] Benchmark dataset bertingkat; catat waktu, hasil, lingkungan, dan batas praktis.
+- [x] Desain predikat/modul baru sesuai AI-RULES dan kontrak input-output tersedia di `prolog/`.
+- [x] Implementasi solver CSP untuk kegiatan praktikum multi-lab/multi-asisten.
+- [x] Tes C01–C09, unsatisfiable, edge case; 73 tes Prolog lulus pada F11-F.
+- [x] Harness benchmark bertingkat/optimasi dan pengujiannya tersedia. F11-F tidak menjalankan ulang benchmark performa; batas dataset terjamin/review hasil tetap terbuka pada checklist bersama.
 
 ## Iqbal — Frontend
-- [ ] Rancang wireframe dashboard, data master, ketersediaan, preview, riwayat.
-- [ ] Setup React + Vite + Tailwind + shadcn/ui setelah kontrak disetujui.
-- [ ] Implementasi halaman CRUD dengan mock respons yang sesuai kontrak.
-- [ ] Implementasi generate/preview/simpan dan pesan error.
-- [ ] Tes UI dan integrasi API.
+- [x] Blueprint/layout enam halaman tersedia; ini bukan bukti persetujuan formal wireframe oleh semua anggota.
+- [x] Setup React + Vite + Tailwind + shadcn/ui tersedia.
+- [x] Implementasi halaman CRUD terintegrasi Flask nyata; mock hanya pada tes terkontrol, bukan perilaku production.
+- [x] Implementasi generate/preview/simpan dan pesan error, termasuk uncertain save tanpa retry otomatis.
+- [x] Tes UI/integrasi: F11-F 383 unit/component dan 32 browser E2E lulus, ditambah 8 tes infrastruktur.
 
 ## Zicco — Backend
 - [x] Finalisasi ERD, constraint SQLite, foreign keys, fondasi database awal (TASK 08).
 - [x] Implementasi DEC-060: timestamp `created_at`/`updated_at` pada 6 tabel master, migrasi idempoten table rebuild, dan regression test (konteks TASK 10A.1: migrasi selesai; 117 tes dan 49 subtest dilaporkan lulus).
-- [ ] Implementasi dan uji DEC-061–DEC-065 pada backend; keputusan dokumentasi selesai tetapi kode belum dibuat.
-- [ ] Setup Flask application factory dan konfigurasi SQLite.
-- [ ] CRUD, soft delete, ketersediaan, revisi data dan invalidasi atomik (TASK 10).
-- [ ] Jembatan proses Prolog JSON dengan timeout 30 detik.
-- [ ] Preview TTL 30 menit, save atomik, riwayat dan snapshot.
-- [ ] Tes error, race condition, dan transaksi.
+- [x] Implementasi dan uji DEC-061–DEC-065 pada backend tersedia; F11-F menjalankan full suite 472 tes + 49 subtests.
+- [x] Setup Flask application factory dan konfigurasi SQLite tanpa auto-migration.
+- [x] CRUD, soft delete, ketersediaan, revision dan invalidasi atomik (TASK 10).
+- [x] Adapter subprocess JSON Prolog dengan timeout 30 detik dan bounded streams.
+- [x] Preview TTL 30 menit, save atomik single-use, riwayat dan snapshot immutable.
+- [x] Tes error, race condition, transaksi, exact expiry dan real CLI lulus pada F11-F.
 
 ## Bersama — integrasi dan UAS
-- [ ] Uji alur data → generate → preview → simpan → riwayat.
-- [ ] Uji edit/nonaktif data → jadwal invalid → generate baru.
+- [x] Uji alur data → generate → preview → simpan → riwayat dengan database sementara dan solver nyata.
+- [x] Uji edit/nonaktif data → jadwal invalid → generate baru serta versi archived/invalid/active.
 - [ ] Review hasil benchmark dan putuskan batas dataset.
 - [ ] Susun tutorial 5 poin dosen, slide, demo, dan video.
 
@@ -54,3 +54,11 @@
 
 ## Definition of Done
 Tugas hanya selesai jika: kriteria jelas, kode/review sesuai spesifikasi, tes relevan dijalankan, hasil didokumentasikan, dan PR disetujui. Tidak cukup hanya 'AI bilang selesai'.
+
+## F11 — final integration readiness
+
+- [x] F11-A sampai F11-E: audit, infrastruktur browser, workflow nyata, failure/concurrency, accessibility/responsiveness dan lazy loading tersedia pada checkpoint; bukti F11-E tetap pada `frontend/F11-E-REPORT.md`.
+- [x] F11-F: regresi lengkap dan clean-install terisolasi dijalankan; dokumentasi, traceability dan lima skenario demo disiapkan.
+- [ ] F11-F: cleanup manual direktori arsip instalasi sementara yang ditolak kebijakan tool, lalu konfirmasi readiness akhir. Lihat laporan; source aplikasi tidak berubah.
+- [ ] Review manusia terhadap diff F11-F dan persetujuan integrasi. Belum ada commit/push/merge oleh agen.
+- [ ] Rehearsal presentasi interaktif, slide/video dan persetujuan final tim UAS.

@@ -36,7 +36,7 @@ Entitas konseptual:
 8. Ketersediaan asisten per slot.
 9. Versi jadwal dan detail penempatan jadwal.
 
-**Status rancangan:** nama kolom, primary/foreign key, batas jumlah entitas, definisi ketersediaan default, dan skema relasional rinci mengacu pada `DATA-MODEL.md` dan masih harus direview sebelum implementasi CRUD. Pernyataan lama bahwa kebijakan hapus belum diputuskan telah **superseded oleh DEC-007**: data master menggunakan soft delete dan tidak dihapus permanen melalui UI MVP.
+**Status aktual F11-F:** schema, allowlist availability dan CRUD telah tersedia dan diuji; rincian kolom/relasi mengacu pada `DATA-MODEL.md`. Batas dataset terjamin dan review formal tim tetap terbuka. Pernyataan historis bahwa kebijakan hapus belum diputuskan telah **superseded oleh DEC-007**: master memakai soft delete, bukan penghapusan permanen melalui UI MVP.
 
 ## 5. Constraint wajib di mesin Prolog
 - **C01:** setiap kegiatan mendapat tepat satu penempatan.
@@ -106,7 +106,7 @@ Sebelum coding paralel, buat dan setujui:
 2. Tidak ada asisten/lab ganda pada slot sama.
 3. Kapasitas dan ketersediaan selalu dipatuhi.
 4. Dataset yang memiliki solusi menghasilkan jadwal valid yang dapat diverifikasi.
-5. Dataset mustahil menghasilkan `no_solution`, bukan jadwal palsu atau crash.
+5. Dataset valid yang mustahil menghasilkan `unsatisfiable` (REST HTTP 200), bukan jadwal palsu atau crash. Istilah historis `no_solution` bukan nama status kontrak final.
 6. CRUD tersimpan permanen di SQLite.
 7. Perubahan data relevan menginvalidasi jadwal aktif dan mempertahankan riwayat.
 8. Generate berikutnya dapat menghasilkan versi baru tanpa menghapus versi lama.
@@ -125,7 +125,7 @@ Prototipe `Project-1-Smart-Scheduling` di lokasi lain **tidak dipindahkan atau d
 6. Integrasi kecil: Generate -> Flask -> Prolog -> React.
 7. Tambahkan CRUD, riwayat, tes end-to-end, dan materi tutorial.
 
-**Catatan:** dokumen ini merupakan spesifikasi draf. Tidak ada kode aplikasi atau skema database yang sudah dibuat oleh dokumen ini.
+**Catatan historis:** saat draf ini dibuat, dokumen tidak membuat kode/skema secara otomatis. Pernyataan ketiadaan implementasi tidak lagi menggambarkan repository; F11-F memverifikasi backend, solver dan frontend aktual. Status review formal draf tetap terpisah dari bukti implementasi.
 
 ## Addendum keputusan desain DEC-007 sampai DEC-010 (18 Oktober 2026)
 
@@ -135,7 +135,7 @@ Prototipe `Project-1-Smart-Scheduling` di lokasi lain **tidak dipindahkan atau d
 - DEC-010: Preview berlaku 30 menit sejak dibuat berdasarkan waktu UTC backend.
 - Penyimpanan preview harus single-use dan memeriksa revisi dataset; simpan jadwal baru dan transisi status versi dilakukan atomik.
 - Kontrak detail mengacu pada `API-CONTRACT.md`; model penyimpanan mengacu pada `DATA-MODEL.md`. Jika ada rekomendasi lama yang bertentangan, keputusan DEC-007–DEC-010 di atas berlaku.
-- Belum ada implementasi aplikasi UAS yang diverifikasi.
+- Catatan historis 18 Oktober 2026: implementasi saat itu belum diverifikasi; status ini superseded oleh bukti regresi F11-F pada [F11-F-REPORT.md](F11-F-REPORT.md).
 
 
 ## Addendum DEC-011: Batas eksekusi solver (18 Oktober 2026)

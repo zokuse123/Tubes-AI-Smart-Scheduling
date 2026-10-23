@@ -1,0 +1,21 @@
+# Local Python environments, caches and credentials (never release artifacts).
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+!.env.example
+
+# Runtime SQLite files; demo/test fixtures must use disposable paths.
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm

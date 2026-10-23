@@ -3,7 +3,7 @@
 **Smart Lab Scheduling System**  
 **Versi:** 2.0-draft-finalisasi-dokumentasi  
 **Tanggal:** 18 Oktober 2026  
-**Status:** Skema dokumentasi berdasarkan DEC-001–DEC-065; fondasi dan migrasi DEC-060 telah tersedia, sedangkan keputusan backend TASK 10A.1 belum merupakan implementasi endpoint.
+**Status:** Skema dokumentasi berdasarkan DEC-001–DEC-065; fondasi/migrasi DEC-060 dan backend scheduling telah diimplementasikan. Verifikasi F11-F pada 23 Oktober 2026: full backend 472 tes + 49 subtests; schema standalone 117 tes + 49 subtests. Pembaruan status ini tidak mengubah schema/kontrak atau menyatakan review tim selesai.
 
 ## 1. Otoritas dan prinsip data
 

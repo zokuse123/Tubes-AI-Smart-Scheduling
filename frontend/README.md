@@ -228,6 +228,8 @@ The report sums entry + transitive static imports for bootstrap JS, and separate
 
 ## Scheduling and errors
 
+F11-F release-readiness verification, demo datasets, clean-install evidence, dependency limitations and integration plan are documented in [the final report](../docs/F11-F-REPORT.md), [UAS demo](../docs/UAS-DEMO.md) and [release checklist](../docs/RELEASE-CHECKLIST.md). Application source, API contracts and dependencies are unchanged by F11-F. Human review/integration approval remains separate; no merge is implied. The temporary clean-install archive requires manual cleanup after tool policy denied recursive removal; see the report before treating the milestone as fully closed.
+
 `scheduleApi.generate()` always sends `{}`. Its `data` is a discriminated union: `status === 'success'` has required preview metadata, assignments, and diagnostics with verification `passed`; `unsatisfiable` has empty assignments, revision, diagnostics with `not_applicable`, and no preview. UNSAT HTTP 200 is a normal result. `save({ preview_id })` returns the active version; `active()` can return `{ data: null }`. History returns immutable snapshot metadata separately from display assignments, with no solver diagnostics. DTO validation checks shape, not CSP correctness.
 
 `healthApi.get()` accepts both healthy HTTP 200 and degraded HTTP 503 data envelopes. It validates the HTTP/status/component combination. A normal backend error envelope on 503 still throws an ApiError.
